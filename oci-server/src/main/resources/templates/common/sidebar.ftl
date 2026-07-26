@@ -132,10 +132,10 @@
                     <i class="fas fa-globe"></i>
                     <span>${msg.get('sidebar.eo.management')}</span>
                 </a>
-               <#-- <a href="/ssl/nginx/management" target="biz-frame" class="nav-link <#if activePage == 'nginx-management'>active</#if>">
+                <a href="/ssl/nginx/management" target="biz-frame" class="nav-link <#if activePage == 'nginx-management'>active</#if>">
                     <i class="fas fa-server"></i>
                     <span>${msg.get('sidebar.nginx.management')}</span>
-                </a>-->
+                </a>
             </div>
         </div>
 

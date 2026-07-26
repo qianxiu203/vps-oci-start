@@ -227,6 +227,8 @@ public class NginxController extends BaseController {
     public ApiResponse applySslConfig(@PathVariable Long id, @RequestParam String email) {
         try {
             proxyConfigService.applySslConfig(id, email);
+            // 关联证书后重新生成 conf（证书仍可能 PENDING，apply 时需证书已落地到 OpenResty）
+            nginxConfigService.generateNginxConfig();
             return ApiResponse.success("SSL配置申请成功");
         } catch (Exception e) {
             log.error("SSL配置失败", e);
@@ -465,6 +467,34 @@ public class NginxController extends BaseController {
             return ApiResponse.success(status);
         } catch (Exception e) {
             log.error("检查OpenResty状态失败", e);
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 一键安装命令（local / docker）
+     */
+    @GetMapping("/openresty/install-command")
+    @ResponseBody
+    public ApiResponse installCommand(@RequestParam(defaultValue = "local") String mode,
+                                      HttpServletRequest request) {
+        try {
+            String origin = request.getHeader("X-Forwarded-Proto");
+            String host = request.getHeader("X-Forwarded-Host");
+            if (host == null || host.isEmpty()) {
+                host = request.getHeader("Host");
+            }
+            String scheme = origin != null && !origin.isEmpty()
+                    ? origin.split(",")[0].trim()
+                    : request.getScheme();
+            if (host == null || host.isEmpty()) {
+                host = "127.0.0.1:" + request.getServerPort();
+            }
+            String publicBase = scheme + "://" + host;
+            Map<String, Object> data = nginxConfigService.buildInstallCommand(mode, publicBase);
+            return ApiResponse.success(data);
+        } catch (Exception e) {
+            log.error("生成安装命令失败", e);
             return ApiResponse.error(e.getMessage());
         }
     }

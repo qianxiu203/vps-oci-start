@@ -75,8 +75,8 @@ public class ProxyConfigServiceImpl implements ProxyConfigService {
 
         ProxyConfig config = new ProxyConfig();
         BeanUtils.copyProperties(dto, config);
-        // SSL状态默认未配置，通过applySslConfig接口申请后才会更新
-        config.setSslStatus(ProxyConfig.SslStatus.NOT_CONFIGURED);
+        config.setConfigStatus(ProxyConfig.ConfigStatus.PENDING);
+        applySslAssociation(config, dto.getEnableSsl(), dto.getSslCertificateId());
         config = proxyConfigRepository.save(config);
 
         // DNS 写入是外部副作用，放在事务提交后单独做：
@@ -112,9 +112,41 @@ public class ProxyConfigServiceImpl implements ProxyConfigService {
             config.setSslCertificateId(null);
             config.setEnableSsl(false);
             config.setSslStatus(ProxyConfig.SslStatus.NOT_CONFIGURED);
+        } else {
+            applySslAssociation(config, dto.getEnableSsl(), dto.getSslCertificateId());
         }
 
         return proxyConfigRepository.save(config);
+    }
+
+    /**
+     * 根据是否启用 SSL 与证书 ID 校正 sslStatus / enableSsl。
+     * 有有效证书 → CONFIGURED；仅 enable 无证书 → NOT_CONFIGURED（等待申请）。
+     */
+    private void applySslAssociation(ProxyConfig config, Boolean enableSsl, Long sslCertificateId) {
+        boolean wantSsl = Boolean.TRUE.equals(enableSsl);
+        if (!wantSsl) {
+            config.setEnableSsl(false);
+            // 保留已关联证书 id，方便再次开启时回选；状态改为未启用 SSL
+            config.setSslStatus(ProxyConfig.SslStatus.NOT_CONFIGURED);
+            return;
+        }
+        config.setEnableSsl(true);
+        if (sslCertificateId != null) {
+            SslCertificate cert = sslCertificateRepository.findById(sslCertificateId)
+                    .orElseThrow(() -> new RuntimeException("证书不存在: " + sslCertificateId));
+            config.setSslCertificateId(sslCertificateId);
+            if (cert.getStatus() == SslCertificate.CertificateStatus.VALID
+                    || cert.getStatus() == SslCertificate.CertificateStatus.EXPIRING_SOON) {
+                config.setSslStatus(ProxyConfig.SslStatus.CONFIGURED);
+            } else if (cert.getStatus() == SslCertificate.CertificateStatus.PENDING) {
+                config.setSslStatus(ProxyConfig.SslStatus.PENDING);
+            } else {
+                config.setSslStatus(ProxyConfig.SslStatus.ERROR);
+            }
+        } else if (config.getSslCertificateId() == null) {
+            config.setSslStatus(ProxyConfig.SslStatus.NOT_CONFIGURED);
+        }
     }
 
     @Override
@@ -152,8 +184,15 @@ public class ProxyConfigServiceImpl implements ProxyConfigService {
             // 关键：必须把证书 id 写回 ProxyConfig，否则 generateServerBlock 会因为
             // sslCertificateId == null 抛"已启用SSL但未关联证书"
             config.setSslCertificateId(cert.getId());
-            config.setSslStatus(ProxyConfig.SslStatus.PENDING);
             config.setEnableSsl(true);
+            if (cert.getStatus() == SslCertificate.CertificateStatus.VALID
+                    || cert.getStatus() == SslCertificate.CertificateStatus.EXPIRING_SOON) {
+                config.setSslStatus(ProxyConfig.SslStatus.CONFIGURED);
+            } else if (cert.getStatus() == SslCertificate.CertificateStatus.ERROR) {
+                config.setSslStatus(ProxyConfig.SslStatus.ERROR);
+            } else {
+                config.setSslStatus(ProxyConfig.SslStatus.PENDING);
+            }
             proxyConfigRepository.save(config);
         } catch (Exception e) {
             config.setSslStatus(ProxyConfig.SslStatus.ERROR);
@@ -240,5 +279,18 @@ public class ProxyConfigServiceImpl implements ProxyConfigService {
                     config.getDomain(), config.getTargetHost(), config.getTargetPort(), tcpFail.getMessage());
             return false;
         }
+    }
+
+    @Override
+    @Transactional
+    public void markActiveProxiesApplied() {
+        List<ProxyConfig> active = proxyConfigRepository.findByConfigStatusNot(ProxyConfig.ConfigStatus.DISABLED);
+        for (ProxyConfig p : active) {
+            if (p.getConfigStatus() != ProxyConfig.ConfigStatus.APPLIED) {
+                p.setConfigStatus(ProxyConfig.ConfigStatus.APPLIED);
+                proxyConfigRepository.save(p);
+            }
+        }
+        log.info("已将 {} 条活动代理标记为 APPLIED", active.size());
     }
 }

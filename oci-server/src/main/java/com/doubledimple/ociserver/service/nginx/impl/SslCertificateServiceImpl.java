@@ -19,6 +19,7 @@ import org.shredzone.acme4j.util.CSRBuilder;
 import org.shredzone.acme4j.util.KeyPairUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -71,6 +72,14 @@ public class SslCertificateServiceImpl implements SslCertificateService {
     @Resource
     @Lazy
     NginxConfigService nginxConfigService;
+
+    @Resource
+    private ApplicationContext applicationContext;
+
+    /** 经 Spring 代理调用 @Async，避免同类自调用导致异步失效 */
+    private SslCertificateServiceImpl self() {
+        return applicationContext.getBean(SslCertificateServiceImpl.class);
+    }
 
     @Value("${baseFile.filePath}")
     private String basePath;
@@ -160,11 +169,11 @@ public class SslCertificateServiceImpl implements SslCertificateService {
             certificate.setDnsProvider(SslCertificate.DnsProvider.CLOUDFLARE);
         }
 
-        certificate.setAutoRenew(true);
+        certificate.setAutoRenew(dto.getAutoRenew() == null || Boolean.TRUE.equals(dto.getAutoRenew()));
         certificate = sslCertificateRepository.save(certificate);
 
-        // 异步申请证书
-        processAcme4jRequestAsync(certificate);
+        // 必须经代理调用，否则 @Async 不生效，申请会同步阻塞请求线程
+        self().processAcme4jRequestAsync(certificate);
 
         return certificate;
     }
@@ -549,8 +558,8 @@ public class SslCertificateServiceImpl implements SslCertificateService {
         certificate.setStatus(SslCertificate.CertificateStatus.PENDING);
         sslCertificateRepository.save(certificate);
 
-        // 异步处理续期 - 续期实际上就是重新申请
-        processAcme4jRequestAsync(certificate);
+        // 异步处理续期 - 续期实际上就是重新申请（经代理走 @Async）
+        self().processAcme4jRequestAsync(certificate);
 
         log.info("开始Let's Encrypt证书续期: {}", certificate.getDomain());
     }
