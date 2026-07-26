@@ -59,4 +59,9 @@ public interface ProxyConfigService {
      * 同步成相应状态（VALID -> CONFIGURED，ERROR -> ERROR）
      */
     void syncProxySslStatusByCertificate(Long sslCertificateId);
+
+    /**
+     * 配置成功应用到节点后，把所有非 DISABLED 的代理标记为 APPLIED
+     */
+    void markActiveProxiesApplied();
 }

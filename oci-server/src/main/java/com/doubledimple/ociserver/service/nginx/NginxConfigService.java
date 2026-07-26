@@ -54,6 +54,18 @@ public interface NginxConfigService {
     void startOpenRestyService();
 
     /**
+     * 生成一键安装命令（local / docker）
+     * @param mode local|docker
+     * @param publicBaseUrl 页面 origin，用于拼 curl 下载地址
+     */
+    Map<String, Object> buildInstallCommand(String mode, String publicBaseUrl);
+
+    /**
+     * 确保存在管理 API Token（没有则生成并持久化）
+     */
+    String ensureApiToken();
+
+    /**
      * 通过API操作nginx配置
      */
     void updateNginxConfigViaApi(String configContent);
