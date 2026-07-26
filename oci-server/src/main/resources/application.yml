@@ -122,6 +122,16 @@ logging:
 baseFile:
   filePath: ./data/upload/
 
+# OpenResty 管理 API（Nginx 反向代理模块）
+# - 运行时优先 system_config（页面生成 Token 会写入 DB）
+# - Docker 可用环境变量覆盖（无需改镜像内 yml）:
+#     OPENRESTY_API_BASE_URL=http://172.17.0.1:8080/api
+#     OPENRESTY_API_TOKEN=xxxx
+openresty:
+  api:
+    base-url: ${OPENRESTY_API_BASE_URL:http://127.0.0.1:8080/api}
+    token: ${OPENRESTY_API_TOKEN:}
+
 cf:
   worker:
     domain: https://oci-api-worker.lovele-cn.workers.dev
