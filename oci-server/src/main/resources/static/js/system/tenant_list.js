@@ -11,11 +11,16 @@ let currentUserPage = 1;
 const userItemsPerPage = 5;
 let allUsers = [];
 
-let auditNextPageToken = null;
 let auditTenantId = null;
-let auditDays = 3; // 默认查询最近3天
-
-let auditRowIndex = 0; // 当前序号计数
+/** 审计日志 token 游标分页状态（OCI 无总页数，按已发现页码展示统一分页 UI） */
+let auditStartDate = null;
+let auditEndDate = null;
+let auditCurrentPage = 1; // 1-based
+let auditPageCache = {}; // page -> items[]
+let auditTokenForPage = { 1: null }; // 请求第 N 页所需 pageToken
+let auditNextTokenByPage = {}; // 第 N 页返回的 nextPageToken
+let auditMaxKnownPage = 1;
+let auditLoading = false;
 
 const i18n = window.I18N;
 
@@ -3414,10 +3419,20 @@ function toggleEmailInfo() {
     }
 }
 
+function resetAuditPagination() {
+    auditCurrentPage = 1;
+    auditPageCache = {};
+    auditTokenForPage = { 1: null };
+    auditNextTokenByPage = {};
+    auditMaxKnownPage = 1;
+    auditLoading = false;
+    const paginationEl = document.getElementById('auditLogPagination');
+    if (paginationEl) paginationEl.innerHTML = '';
+}
+
 function showAuditLogs(tenantId) {
     auditTenantId = tenantId;
-    auditNextPageToken = null;
-    auditRowIndex = 0;
+    resetAuditPagination();
 
     const today = new Date().toISOString().split('T')[0];
     const startInput = document.getElementById('startDate');
@@ -3426,9 +3441,11 @@ function showAuditLogs(tenantId) {
         startInput.value = today;
         endInput.value = today;
     }
+    auditStartDate = today;
+    auditEndDate = today;
 
     document.getElementById('auditLogModal').style.display = 'flex';
-    loadAuditLogs(today, today);
+    goToAuditPage(1);
 }
 
 function closeAuditLogModal() {
@@ -3440,7 +3457,7 @@ function searchAuditLogsByDate() {
     const endInput = document.getElementById('endDate');
 
     const startDateStr = startInput.value;
-    const endDateStr = endInput.value || startDateStr; // 若未选endDate, 用startDate代替
+    const endDateStr = endInput.value || startDateStr;
 
     if (!startDateStr) {
         Swal.fire('warning', i18n.tenant_plzStartTime, 'info');
@@ -3451,7 +3468,6 @@ function searchAuditLogsByDate() {
     const endDate = new Date(endDateStr);
     const now = new Date();
 
-    // 检查日期范围有效性
     if (startDate > endDate) {
         Swal.fire('warning', i18n.tenant_plzStartTime1, 'warning');
         return;
@@ -3463,162 +3479,237 @@ function searchAuditLogsByDate() {
         return;
     }
 
-    auditNextPageToken = null;
-    auditRowIndex = 0;
-    loadAuditLogs(startDateStr, endDateStr);
+    auditStartDate = startDateStr;
+    auditEndDate = endDateStr;
+    resetAuditPagination();
+    goToAuditPage(1);
 }
 
-function loadAuditLogs(startDateStr, endDateStr) {
-    const tbody = document.getElementById('auditLogTableBody');
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center"><span class="loading-spinner"></span> '+i18n.common_loading+'</td></tr>';
+/** 跳转审计日志页（带缓存；OCI token 游标，仅可访问已发现页） */
+function goToAuditPage(page) {
+    page = parseInt(page, 10);
+    if (isNaN(page) || page < 1) return;
+    if (page > 1 && auditTokenForPage[page] === undefined && !auditPageCache[page]) return;
+    if (auditLoading) return;
 
-    const token = document.querySelector('meta[name="_csrf"]').content;
+    if (auditPageCache[page]) {
+        auditCurrentPage = page;
+        renderAuditTable(auditPageCache[page], page);
+        renderAuditPagination();
+        return;
+    }
+
+    fetchAuditPage(page);
+}
+
+function fetchAuditPage(page) {
+    const tbody = document.getElementById('auditLogTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center"><span class="loading-spinner"></span> ' + i18n.common_loading + '</td></tr>';
+    auditLoading = true;
+    setAuditPaginationDisabled(true);
+
+    const csrf = document.querySelector('meta[name="_csrf"]').content;
+    const pageToken = page === 1 ? null : (auditTokenForPage[page] || null);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/tenants/audit/log', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('X-CSRF-TOKEN', token);
+    xhr.setRequestHeader('X-CSRF-TOKEN', csrf);
 
-    xhr.onload = function() {
+    xhr.onload = function () {
+        auditLoading = false;
         if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
+            let response;
+            try {
+                response = JSON.parse(xhr.responseText);
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">服务器错误</td></tr>';
+                renderAuditPagination();
+                return;
+            }
             if (response.success && response.data) {
                 const data = response.data.data || [];
-                const nextToken = response.data.nextPageToken;
+                const nextToken = response.data.nextPageToken || null;
 
-                if (!data.length) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--text-secondary);">暂无数据</td></tr>';
-                    document.getElementById('loadMoreLogsBtn').style.display = 'none';
-                    return;
+                auditPageCache[page] = data;
+                auditNextTokenByPage[page] = nextToken;
+                if (nextToken) {
+                    auditTokenForPage[page + 1] = nextToken;
+                    auditMaxKnownPage = Math.max(auditMaxKnownPage, page + 1);
+                } else {
+                    auditMaxKnownPage = Math.max(auditMaxKnownPage, page);
                 }
-
-                const rows = data.map(item => `
-                      <tr class="${item.responseStatus && String(item.responseStatus) !== '200' ? 'audit-error-row' : ''}">
-                        <td>${++auditRowIndex}</td>
-                        <td>${item.userName || '-'}</td>
-                        <td>${item.ipAddress || '-'}</td>
-                        <td>${item.eventType || '-'}</td>
-                        <td>${item.clientEnv || '-'}</td>
-                        <td>${item.eventTime || '-'}</td>
-                        <td>${item.responseStatus || '-'}</td>
-                    </tr>
-                `).join('');
-
-                tbody.innerHTML = rows;
-                auditNextPageToken = nextToken;
-                document.getElementById('loadMoreLogsBtn').style.display = nextToken ? 'inline-block' : 'none';
+                auditCurrentPage = page;
+                renderAuditTable(data, page);
+                renderAuditPagination();
             } else {
-                tbody.innerHTML = `<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">${response.message || '加载失败'}</td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">' +
+                    (response.message || '加载失败') + '</td></tr>';
+                renderAuditPagination();
             }
         } else {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">服务器错误</td></tr>';
-        }
-    };
-
-    xhr.onerror = function() {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">网络错误</td></tr>';
-    };
-
-    xhr.send(JSON.stringify({
-        tenantId: auditTenantId,
-        startDate: startDateStr,
-        endDate: endDateStr,
-        pageToken: auditNextPageToken
-    }));
-}
-
-function loadMoreAuditLogs() {
-    if (!auditNextPageToken) return;
-
-    const tbody = document.getElementById('auditLogTableBody');
-    const loadMoreBtn = document.getElementById('loadMoreLogsBtn');
-    const token = document.querySelector('meta[name="_csrf"]').content;
-
-    let startDateStr = '';
-    let endDateStr = '';
-
-    const startInput = document.getElementById('startDate');
-    const endInput = document.getElementById('endDate');
-    const singleDateInput = document.getElementById('auditDate');
-
-    if (startInput && startInput.value) {
-        startDateStr = startInput.value;
-        endDateStr = (endInput && endInput.value) ? endInput.value : startDateStr;
-    } else if (singleDateInput && singleDateInput.value) {
-        startDateStr = singleDateInput.value;
-        endDateStr = singleDateInput.value; // 单天查询
-    } else {
-        const today = new Date().toISOString().split('T')[0];
-        startDateStr = today;
-        endDateStr = today;
-    }
-
-    loadMoreBtn.disabled = true;
-    const originalText = loadMoreBtn.innerHTML;
-    loadMoreBtn.innerHTML = '<span class="loading-spinner"></span> '+i18n.common_loading;
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/tenants/audit/log', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('X-CSRF-TOKEN', token);
-
-    xhr.onload = function () {
-        loadMoreBtn.disabled = false;
-        loadMoreBtn.innerHTML = originalText;
-
-        if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success && response.data) {
-                const data = response.data.data || [];
-                const nextToken = response.data.nextPageToken;
-
-                if (data.length > 0) {
-                    const rows = data.map(item => `
-                         <tr class="${item.responseStatus && String(item.responseStatus) !== '200' ? 'audit-error-row' : ''}">
-                            <td>${++auditRowIndex}</td>
-                            <td>${item.userName || '-'}</td>
-                            <td>${item.ipAddress || '-'}</td>
-                            <td>${item.eventType || '-'}</td>
-                            <td>${item.clientEnv || '-'}</td>
-                            <td>${item.eventTime || '-'}</td>
-                            <td>${item.responseStatus || '-'}</td>
-                        </tr>
-                    `).join('');
-                    tbody.insertAdjacentHTML('beforeend', rows);
-                }
-
-                auditNextPageToken = nextToken;
-                if (!nextToken) loadMoreBtn.style.display = 'none';
-            } else {
-                console.error('Failed to load audit logs:', response.message);
-                showError();
-            }
-        } else {
-           showError();
+            renderAuditPagination();
         }
     };
 
     xhr.onerror = function () {
-        loadMoreBtn.disabled = false;
-        loadMoreBtn.innerHTML = originalText;
-        showError();
+        auditLoading = false;
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--accent-red);">网络错误</td></tr>';
+        renderAuditPagination();
     };
 
     xhr.send(JSON.stringify({
         tenantId: auditTenantId,
-        startDate: startDateStr,
-        endDate: endDateStr,
-        pageToken: auditNextPageToken
+        startDate: auditStartDate,
+        endDate: auditEndDate,
+        pageToken: pageToken
     }));
 }
 
-function toggleSpoiler(element) {
-    if (element.classList.contains('is-hidden')) {
+function renderAuditTable(data, page) {
+    const tbody = document.getElementById('auditLogTableBody');
+    if (!data || !data.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color: var(--text-secondary);">' +
+            (i18n.common_noData || '暂无数据') + '</td></tr>';
+        return;
+    }
+
+    let startIndex = 0;
+    for (let p = 1; p < page; p++) {
+        startIndex += (auditPageCache[p] || []).length;
+    }
+
+    tbody.innerHTML = data.map(function (item, idx) {
+        const errCls = item.responseStatus && String(item.responseStatus) !== '200' ? 'audit-error-row' : '';
+        return '<tr class="' + errCls + '">' +
+            '<td>' + (startIndex + idx + 1) + '</td>' +
+            '<td>' + (item.userName || '-') + '</td>' +
+            '<td>' + (item.ipAddress || '-') + '</td>' +
+            '<td>' + (item.eventType || '-') + '</td>' +
+            '<td>' + (item.clientEnv || '-') + '</td>' +
+            '<td>' + (item.eventTime || '-') + '</td>' +
+            '<td>' + (item.responseStatus || '-') + '</td>' +
+            '</tr>';
+    }).join('');
+}
+
+/**
+ * 渲染与 ClientPagination / pagination.ftl 一致的分页栏。
+ * OCI 审计接口无 total，页码随 nextPageToken 逐步发现。
+ */
+function renderAuditPagination() {
+    const paginationEl = document.getElementById('auditLogPagination');
+    if (!paginationEl) return;
+
+    const cur = auditCurrentPage;
+    const pageData = auditPageCache[cur] || [];
+    const hasPrev = cur > 1;
+    const hasNext = !!auditNextTokenByPage[cur];
+    // 已发现最大页：当前有 next 时至少 cur+1
+    let total = auditMaxKnownPage;
+    if (hasNext) total = Math.max(total, cur + 1);
+    if (total < 1) total = 1;
+
+    // 无数据且仅一页时不展示分页
+    if ((!pageData || !pageData.length) && !hasPrev && !hasNext) {
+        paginationEl.innerHTML = '';
+        return;
+    }
+
+    const prev = i18n.page_prev || '上一页';
+    const next = i18n.page_next || '下一页';
+    const pageText = i18n.page_page || '页';
+    const totalText = i18n.page_total || '共';
+    const toText = i18n.page_to || '第';
+    const eleText = i18n.page_ele || '条';
+    const pageCount = pageData.length;
+
+    // 累计已加载条数（已知页）
+    let loadedCount = 0;
+    Object.keys(auditPageCache).forEach(function (k) {
+        loadedCount += (auditPageCache[k] || []).length;
+    });
+
+    // 弹框内紧凑分页：上一页 + 页码 + 下一页 + 简要统计（不占过多高度）
+    let html = '<div class="pagination-container audit-pagination-inner"><div class="pagination-wrapper">';
+
+    html += '<div class="pagination-nav">' +
+        '<button type="button" class="pagination-btn nav-btn prev-btn' + (!hasPrev ? ' disabled' : '') + '"' +
+        (!hasPrev ? ' disabled' : '') + ' data-audit-page="' + (cur - 1) + '">' +
+        '<i class="fas fa-chevron-left"></i><span class="btn-text">' + prev + '</span></button>' +
+        '<div class="page-numbers">';
+
+    let sp = Math.max(1, cur - 1);
+    let ep = Math.min(total, sp + 2);
+    if (ep - sp < 2) sp = Math.max(1, ep - 2);
+
+    if (sp > 1) {
+        html += '<button type="button" class="pagination-btn page-btn" data-audit-page="1">1</button>';
+        if (sp > 2) html += '<span class="pagination-ellipsis"><i class="fas fa-ellipsis-h"></i></span>';
+    }
+    for (let i = sp; i <= ep; i++) {
+        html += '<button type="button" class="pagination-btn page-btn' + (i === cur ? ' active' : '') +
+            '" data-audit-page="' + i + '">' + i + '</button>';
+    }
+    if (ep < total) {
+        if (ep < total - 1) html += '<span class="pagination-ellipsis"><i class="fas fa-ellipsis-h"></i></span>';
+        html += '<button type="button" class="pagination-btn page-btn" data-audit-page="' + total + '">' + total + '</button>';
+    }
+
+    html += '</div>' +
+        '<button type="button" class="pagination-btn nav-btn next-btn' + (!hasNext ? ' disabled' : '') + '"' +
+        (!hasNext ? ' disabled' : '') + ' data-audit-page="' + (cur + 1) + '">' +
+        '<span class="btn-text">' + next + '</span><i class="fas fa-chevron-right"></i></button>' +
+        '</div>';
+
+    html += '<div class="pagination-info">' +
+        '<div class="total-info">' +
+        '<span class="page-info">' + toText + ' <strong>' + cur + '</strong> / <strong>' + total +
+        '</strong> ' + pageText + (hasNext ? '+' : '') + '</span>' +
+        '<span class="total-text">' + totalText + ' <strong>' + loadedCount + '</strong> ' + eleText +
+        (hasNext ? '+' : '') +
+        ' · ' + pageCount + ' ' + eleText + '</span>' +
+        '</div></div>';
+
+    html += '</div></div>';
+    paginationEl.innerHTML = html;
+
+    paginationEl.querySelectorAll('.pagination-btn:not(.disabled)').forEach(function (btn) {
+        const p = parseInt(btn.getAttribute('data-audit-page'), 10);
+        if (!isNaN(p)) {
+            btn.addEventListener('click', function () { goToAuditPage(p); });
+        }
+    });
+}
+
+function setAuditPaginationDisabled(disabled) {
+    const paginationEl = document.getElementById('auditLogPagination');
+    if (!paginationEl) return;
+    paginationEl.querySelectorAll('.pagination-btn').forEach(function (el) {
+        el.style.pointerEvents = disabled ? 'none' : '';
+        el.style.opacity = disabled ? '0.5' : '';
+    });
+}
+
+function setNameSpoilerVisible(element, visible) {
+    if (!element) return;
+    if (visible) {
         element.classList.remove('is-hidden');
         element.classList.add('is-visible');
     } else {
         element.classList.remove('is-visible');
         element.classList.add('is-hidden');
     }
+    var td = element.closest ? element.closest('td') : null;
+    if (td) {
+        if (visible) td.classList.add('name-expanded');
+        else td.classList.remove('name-expanded');
+    }
+}
+
+function toggleSpoiler(element) {
+    var show = element.classList.contains('is-hidden');
+    setNameSpoilerVisible(element, show);
 }
 
 var _spoilersVisible = false;
@@ -3626,13 +3717,7 @@ function toggleAllSpoilers() {
     _spoilersVisible = !_spoilersVisible;
     var spoilers = document.querySelectorAll('.name-spoiler');
     spoilers.forEach(function(el) {
-        if (_spoilersVisible) {
-            el.classList.remove('is-hidden');
-            el.classList.add('is-visible');
-        } else {
-            el.classList.remove('is-visible');
-            el.classList.add('is-hidden');
-        }
+        setNameSpoilerVisible(el, _spoilersVisible);
     });
     var icon = document.getElementById('spoilerToggleIcon');
     var btn  = document.getElementById('spoilerToggleBtn');
