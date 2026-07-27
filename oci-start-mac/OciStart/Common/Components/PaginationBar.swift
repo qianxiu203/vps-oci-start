@@ -12,6 +12,12 @@ import SwiftUI
 /// - Jump field: `AppCompactField` / `AppInputStyle` (no system focus ring)
 struct PaginationBar: View {
     @Binding var state: PageState
+    /// 是否显示每页条数选择（token 游标分页等场景可关）
+    var showsSizeSelector: Bool = true
+    /// 是否显示跳转输入
+    var showsJump: Bool = true
+    /// 覆盖默认 `rangeText`（例如「共 100+ 条」）
+    var rangeTextOverride: String? = nil
     var onChange: () -> Void = {}
 
     @State private var jumpText: String = ""
@@ -40,8 +46,10 @@ struct PaginationBar: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            sizeSelector
-            Spacer(minLength: 8)
+            if showsSizeSelector {
+                sizeSelector
+                Spacer(minLength: 8)
+            }
             navControls
             Spacer(minLength: 8)
             infoAndJump
@@ -127,33 +135,35 @@ struct PaginationBar: View {
 
     private var infoAndJump: some View {
         HStack(spacing: 8) {
-            Text(state.rangeText)
+            Text(rangeTextOverride ?? state.rangeText)
                 .font(.system(size: 12))
                 .foregroundColor(AppTheme.sidebarText(dark))
                 .lineLimit(1)
 
-            Text("跳至")
-                .font(.system(size: 12))
-                .foregroundColor(AppTheme.sidebarText(dark))
+            if showsJump {
+                Text("跳至")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.sidebarText(dark))
 
-            AppCompactField(
-                text: $jumpText,
-                placeholder: "\(state.displayPage)",
-                width: 56,
-                height: controlHeight,
-                onCommit: { jump() }
-            )
+                AppCompactField(
+                    text: $jumpText,
+                    placeholder: "\(state.displayPage)",
+                    width: 56,
+                    height: controlHeight,
+                    onCommit: { jump() }
+                )
 
-            Button(action: jump) {
-                Text("Go")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: controlHeight)
-                    .background(AppTheme.sidebarActive)
-                    .cornerRadius(8)
+                Button(action: jump) {
+                    Text("Go")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: controlHeight)
+                        .background(AppTheme.sidebarActive)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
     }
 

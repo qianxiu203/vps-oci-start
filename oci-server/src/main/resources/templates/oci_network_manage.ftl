@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/css/all.min.css">
     <link rel="stylesheet" href="/css/common/fa-fix.css">
     <link rel="stylesheet" href="/css/app/oci_network_manage.css">
+    <link rel="stylesheet" href="/css/common/dropdown-menu.css">
     <link rel="stylesheet" href="/css/common/loading.css">
 
     <!-- SweetAlert2 CSS -->
@@ -22,6 +23,7 @@
     <link href="/css/common/sweetalert-overrides.css" rel="stylesheet">
     <!-- SweetAlert2 JS -->
     <script src="/js/sweetalert2.min.js"></script>
+    <script src="/js/common/dropdown-menu.js"></script>
 
 </head>
 <body>
@@ -34,86 +36,31 @@
     <!-- Main Content -->
     <main class="main-content">
     <div class="page-card">
-        <!-- 页面标题 -->
+        <!-- 页面标题（对齐租户管理） -->
         <div class="page-header">
             <h1 class="page-title">
                 <i class="fas fa-network-wired"></i>
                 <span>${msg.get("net.config")}</span>
             </h1>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn btn-primary" onclick="refreshVnicInfo()">
+            <div class="page-header-actions">
+                <button class="btn btn-primary" id="queryVnicBtn" onclick="loadPageData()">
+                    <i class="fas fa-search"></i> ${msg.get("net.query")}
+                </button>
+                <button class="btn btn-success" onclick="showCreateVnicModal()">
+                    <i class="fas fa-plus"></i> ${msg.get("net.createVnic")}
+                </button>
+                <button class="btn btn-purple" onclick="showLoadBalancerModal()" title="${msg.get("net.advancedNetConfigSummary")}">
+                    <i class="fas fa-rocket"></i> ${msg.get("net.activeLb")}
+                </button>
+                <button class="btn btn-warning" onclick="showRestoreNetworkModal()">
+                    <i class="fas fa-undo"></i> ${msg.get("net.restoreLb")}
+                </button>
+                <button class="btn btn-secondary" onclick="refreshVnicInfo()" title="${msg.get("email.refresh")}">
                     <i class="fas fa-sync-alt"></i> ${msg.get("email.refresh")}
                 </button>
                 <a href="/oci/list" class="btn btn-secondary" id="backButton">
                     <i class="fas fa-arrow-left"></i> ${msg.get("common.rollback")}
                 </a>
-            </div>
-        </div>
-
-        <!-- 统计信息 -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon primary">
-                        <i class="fas fa-network-wired"></i>
-                    </div>
-                    <div class="stat-title">${msg.get("net.vncs")}</div>
-                </div>
-                <div class="stat-value" id="totalVnicCount">0</div>
-                <div class="stat-description">${msg.get("net.vncAndOther")}</div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon success">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="stat-title">${msg.get("net.activeVnic")}</div>
-                </div>
-                <div class="stat-value" id="activeVnicCount">0</div>
-                <div class="stat-description">${msg.get("net.activeVnics")}</div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon warning">
-                        <i class="fas fa-plus-circle"></i>
-                    </div>
-                    <div class="stat-title">${msg.get("net.otherVnic")}</div>
-                </div>
-                <div class="stat-value" id="secondaryVnicCount">0</div>
-                <div class="stat-description">${msg.get("net.otherNetInterface")}</div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <div class="stat-icon info">
-                        <i class="fas fa-globe"></i>
-                    </div>
-                    <div class="stat-title">${msg.get("machine.ipv6")}</div>
-                </div>
-                <div class="stat-value" id="totalIpv6Count">0</div>
-                <div class="stat-description">${msg.get("net.ipv6s")}</div>
-            </div>
-        </div>
-
-        <div class="load-balancer-section">
-            <div class="load-balancer-content">
-                <div class="load-balancer-title">
-                    <i class="fas fa-balance-scale"></i>
-                    ${msg.get("net.advancedNetConfig")}
-                </div>
-                <div class="load-balancer-description">
-                    ${msg.get("net.advancedNetConfigSummary")}
-                </div>
-                <div class="load-balancer-actions">
-                    <button class="btn btn-purple" onclick="showLoadBalancerModal()">
-                        <i class="fas fa-rocket"></i> ${msg.get("net.activeLb")}
-                    </button>
-                    <button class="btn btn-warning" onclick="showRestoreNetworkModal()">
-                        <i class="fas fa-undo"></i> ${msg.get("net.restoreLb")}
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -277,56 +224,63 @@
             </div>
         </div>
 
-        <!-- 快速操作 -->
-        <div class="action-section">
-            <h3 class="section-title">
-                <i class="fas fa-tools"></i>
-                ${msg.get("net.quickAction")}
-            </h3>
-            <div class="action-buttons">
-                <button class="btn btn-success" onclick="showCreateVnicModal()">
-                    <i class="fas fa-plus"></i> ${msg.get("net.createVnic")}
-                </button>
-                <#--<button class="btn btn-warning" onclick="showCreateIpv6Modal()">
-                    <i class="fas fa-globe"></i> 添加IPv6
-                </button>
-                <button class="btn btn-danger" onclick="showDeleteAllSecondaryModal()">
-                    <i class="fas fa-trash-alt"></i> 删除所有辅助VNIC
-                </button>-->
-            </div>
-        </div>
-
-        <!-- 主VNIC信息 -->
-        <div id="primaryVnicSection" class="vnic-section" style="display: none;">
-            <div class="vnic-section-header">
-                <h3 class="section-title">
-                    <i class="fas fa-star"></i>
-                    ${msg.get("net.homeVnic")}
-                </h3>
-                <span class="btn btn-sm btn-primary">${msg.get("net.homeNetInterface")}</span>
-            </div>
-            <div id="primaryVnicContent" class="vnic-grid">
-
-            </div>
-        </div>
-
-        <!-- 辅助VNIC列表 -->
+        <!-- VNIC 列表（表格，对齐租户管理） -->
         <div class="vnic-section">
             <div class="vnic-section-header">
                 <h3 class="section-title">
-                    <i class="fas fa-network-wired"></i>
-                    ${msg.get(("net.otherVnic"))}
+                    <i class="fas fa-list"></i>
+                    VNIC 列表
                 </h3>
-                <span class="btn btn-sm btn-info"><span id="secondaryVnicCountDisplay">0</span> ${msg.get("net.otherInterfaces")}</span>
             </div>
 
-            <div id="secondaryVnicContent" class="vnic-grid">
-                <!-- 辅助VNIC内容将在这里动态生成 -->
+            <div id="vnicTableWrap" class="table-view" style="display: none;">
+                <table class="table vnic-table">
+                    <colgroup>
+                        <col class="col-name">
+                        <col class="col-type">
+                        <col class="col-status">
+                        <col class="col-ip">
+                        <col class="col-ip">
+                        <col class="col-subnet">
+                        <col class="col-ipv6">
+                        <col class="col-actions">
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th class="col-name">名称</th>
+                        <th class="col-type">类型</th>
+                        <th class="col-status">${msg.get("index.version.status")}</th>
+                        <th class="col-ip">${msg.get("net.public")}</th>
+                        <th class="col-ip">${msg.get("net.privateIpv")}</th>
+                        <th class="col-subnet">${msg.get("net.subnetId")}</th>
+                        <th class="col-ipv6">${msg.get("machine.ipv6")}</th>
+                        <th class="col-actions">${msg.get("tenant.action")!'操作'}</th>
+                    </tr>
+                    </thead>
+                    <tbody id="vnicTableBody">
+                    </tbody>
+                </table>
             </div>
+
+            <!-- 兼容旧脚本占位（不再使用卡片渲染） -->
+            <div id="primaryVnicSection" style="display: none;"></div>
+            <div id="primaryVnicContent" style="display: none;"></div>
+            <div id="secondaryVnicContent" style="display: none;"></div>
 
             <div id="emptySecondaryState" class="empty-state" style="display: none;">
                 <i class="fas fa-network-wired"></i>
                 <div class="empty-state-title">${msg.get("net.noOtherVnic")}</div>
+                <div class="empty-state-text">${msg.get("net.createOtherVnicSummary")}</div>
+            </div>
+            <!-- 初始态：未查询（仅提示，查询入口在右上角） -->
+            <div id="idleVnicState" class="empty-state">
+                <i class="fas fa-network-wired"></i>
+                <div class="empty-state-title">${msg.get("net.idleTitle")}</div>
+                <div class="empty-state-text">${msg.get("net.idleHint")}</div>
+            </div>
+            <div id="emptyVnicState" class="empty-state" style="display: none;">
+                <i class="fas fa-network-wired"></i>
+                <div class="empty-state-title">${msg.get("common.noData")}</div>
                 <div class="empty-state-text">${msg.get("net.createOtherVnicSummary")}</div>
             </div>
         </div>
@@ -753,8 +707,8 @@
                 }
             });
         });
-
-        loadPageData();
+        // 进入页面不自动拉数，需点击「查询」
+        showIdleState();
     });
     function showCreateVnicModal() {
         const modal = document.getElementById('createVnicModal');
@@ -999,6 +953,7 @@
             });
     }
     function refreshVnicInfo() {
+        // 强制从云侧刷新后再查询列表（不整页 reload，避免又回到未加载态）
         showLoading('loading');
         fetch(`/oci/vnic/refresh?instanceId=`+instanceId, {
             method: 'GET',
@@ -1008,10 +963,10 @@
         })
             .then(response => response.json())
             .then(data => {
-                hideLoading();
                 if (data.success) {
-                    window.location.reload();
+                    loadPageData();
                 } else {
+                    hideLoading();
                     Swal.fire({
                         icon: 'error',
                         title: 'error',
@@ -1028,6 +983,17 @@
                     text: i18n.net_netError
                 });
             });
+    }
+
+    function showIdleState() {
+        var tableWrap = document.getElementById('vnicTableWrap');
+        var emptyAll = document.getElementById('emptyVnicState');
+        var idle = document.getElementById('idleVnicState');
+        var emptySecondary = document.getElementById('emptySecondaryState');
+        if (tableWrap) tableWrap.style.display = 'none';
+        if (emptyAll) emptyAll.style.display = 'none';
+        if (emptySecondary) emptySecondary.style.display = 'none';
+        if (idle) idle.style.display = 'block';
     }
 
     function copyToClipboard(text, element) {
@@ -1122,6 +1088,8 @@
 
     function loadPageData() {
         showLoading('loading');
+        var idle = document.getElementById('idleVnicState');
+        if (idle) idle.style.display = 'none';
         fetch(`/oci/vnic/loadData?instanceId=`+instanceId, {
             method: 'GET',
             headers: {
@@ -1135,11 +1103,23 @@
                     updatePageWithData(data.data);
                 } else {
                     console.error('获取VNIC信息失败:', data.message);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'error',
+                        text: data.message || i18n.net_netError
+                    });
+                    showIdleState();
                 }
             })
             .catch(error => {
                 hideLoading();
                 console.error('加载数据失败:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'error',
+                    text: i18n.net_netError
+                });
+                showIdleState();
             });
     }
 
@@ -1148,169 +1128,167 @@
 
         if (tenantId) {
             const backButton = document.getElementById('backButton');
-            backButton.href = '/oci/list?tenantId=' + tenantId;
+            if (backButton) {
+                backButton.href = '/oci/list?tenantId=' + tenantId;
+            }
         }
-        document.getElementById('totalVnicCount').textContent = vnicList ? vnicList.length : 0;
-        document.getElementById('activeVnicCount').textContent =
-            vnicList ? vnicList.filter(v => v.lifecycleState === 'ATTACHED').length : 0;
-        document.getElementById('secondaryVnicCount').textContent = secondaryVnics ? secondaryVnics.length : 0;
-        document.getElementById('secondaryVnicCountDisplay').textContent = secondaryVnics ? secondaryVnics.length : 0;
-        let totalIpv6 = 0;
-        if (vnicList) {
-            vnicList.forEach(function(vnic) {
-                if (vnic.ipv6Addresses) {
-                    totalIpv6 += vnic.ipv6Addresses.length;
-                }
-            });
-        }
-        document.getElementById('totalIpv6Count').textContent = totalIpv6;
-        updatePrimaryVnicDisplay(primaryVnic);
-        updateSecondaryVnicsDisplay(secondaryVnics);
         window.vnicData = data;
+        updateVnicTable(vnicList, primaryVnic, secondaryVnics);
     }
 
-    function updatePrimaryVnicDisplay(primaryVnic) {
-        const primaryVnicSection = document.getElementById('primaryVnicSection');
-        const primaryVnicContent = document.getElementById('primaryVnicContent');
-        if (primaryVnic) {
-            primaryVnicSection.style.display = 'block';
-            const ipv6Count = primaryVnic.ipv6Addresses ? primaryVnic.ipv6Addresses.length : 0;
-            primaryVnicContent.innerHTML =
-                '<div class="vnic-card primary">' +
-                '<div class="vnic-card-header">' +
-                '<div class="vnic-icon">' +
-                '<i class="fas fa-star"></i>' +
-                '</div>' +
-                '<div class="vnic-title">' +
-                '<div class="vnic-name">' + (primaryVnic.vnicDisplayName || ''+i18n.net_homeVnic2+'') + '</div>' +
-                '<div class="vnic-type">'+i18n.net_noDel+'</div>' +
-                '</div>' +
-                '</div>' +
-                '<div class="vnic-content">' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">VNIC ID:</span>' +
-                '<span class="info-value">' + (primaryVnic.vnicId || '') + '</span>' +
-                '</div>' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">'+i18n.net_privateIpv+':</span>' +
-                '<span class="info-value">' + (primaryVnic.privateIp || 'unknow') + '</span>' +
-                '</div>' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">'+i18n.net_public+':</span>' +
-                '<div class="info-value" style="display: flex; align-items: center; gap: 8px;">' +
-                '<span class="ip-text" style="flex: 1;">' + (primaryVnic.publicIp || 'unknow') + '</span>' +
-                '<a href="#" class="action-link copy" onclick="copyToClipboard(\'' + (primaryVnic.publicIp || '') + '\', this)" title="'+i18n.machine_copyIp+'">' +
-                '<i class="fas fa-copy"></i>' +
-                '</a>' +
-                '<a href="#" class="action-link switch" onclick="handleSwitchVnicIp(\'' + (primaryVnic.vnicId || '') + '\', \'' + (primaryVnic.vnicDisplayName || ''+i18n.net_homeVnic+'') + '\')" title="'+i18n.machine_changeIp+'">' +
-                '<i class="fas fa-sync-alt"></i>' +
-                '</a>' +
-                '</div>' +
-                '</div>' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">'+i18n.net_subnetId+':</span>' +
-                '<span class="info-value">' + (primaryVnic.subnetId || 'unKnow') + '</span>' +
-                '</div>' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">'+i18n.net_status+':</span>' +
-                '<span class="info-value">' + (primaryVnic.lifecycleState || 'unKnow') + '</span>' +
-                '</div>' +
-                '<div class="vnic-info-item">' +
-                '<span class="info-label">'+i18n.machine_ipv6+':</span>' +
-                '<div class="info-value">' +
-                '<button class="btn btn-sm btn-info" onclick="showIpv6Modal(\'' + (primaryVnic.vnicId || '') + '\', \'' + (primaryVnic.vnicDisplayName || ''+i18n.net_homeVnic+'') + '\')">' +
-                '<i class="fas fa-eye"></i> '+i18n.net_findIpv6+' (<span id="primary-ipv6-count">' + ipv6Count + '</span>)' +
-                '</button>' +
-                '</div>' +
-                '</div>' +
-                '</div>' +
-                '<div class="vnic-actions">' +
-                '<button class="btn btn-sm btn-warning" onclick="showCreateIpv6ForVnicModal(\'' + (primaryVnic.vnicId || '') + '\')">' +
-                '<i class="fas fa-plus"></i> '+i18n.net_addIpv6+'' +
-                '</button>' +
-                '</div>' +
-                '</div>';
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escapeJsAttr(str) {
+        if (str == null) return '';
+        return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    /** 中间省略，适合 OCID / 长名称；悬停 title 看全文 */
+    function ellipsisMiddle(str, maxLen) {
+        var s = str == null ? '' : String(str);
+        if (!s) return '—';
+        if (!maxLen || s.length <= maxLen) return s;
+        if (maxLen <= 4) return s.slice(0, maxLen);
+        var head = Math.ceil((maxLen - 1) / 2);
+        var tail = Math.floor((maxLen - 1) / 2);
+        return s.slice(0, head) + '…' + s.slice(s.length - tail);
+    }
+
+    function statusBadgeHtml(state) {
+        var s = state || '—';
+        var cls = 'badge-neutral';
+        var u = String(s).toUpperCase();
+        if (u === 'ATTACHED' || u === 'AVAILABLE' || u === 'ACTIVE') cls = 'badge-success';
+        else if (u === 'ATTACHING' || u === 'PROVISIONING') cls = 'badge-warning';
+        else if (u === 'DETACHED' || u === 'DETACHING' || u === 'TERMINATED') cls = 'badge-danger';
+        return '<span class="status-badge ' + cls + '">' + escapeHtml(s) + '</span>';
+    }
+
+    function ipCellHtml(ip, vnicId, displayName, isPrimary) {
+        if (!ip) {
+            return '<span class="ip-muted">—</span>';
+        }
+        var name = displayName || (isPrimary ? i18n.net_homeVnic : 'VNIC');
+        return '<div class="ip-cell">' +
+            '<span class="ip-text" title="' + escapeHtml(ip) + '">' + escapeHtml(ip) + '</span>' +
+            '<a href="#" class="action-link copy" onclick="copyToClipboard(\'' + escapeJsAttr(ip) + '\', this); return false;" title="' + i18n.machine_copyIp + '">' +
+            '<i class="fas fa-copy"></i></a>' +
+            '<a href="#" class="action-link switch" onclick="handleSwitchVnicIp(\'' + escapeJsAttr(vnicId) + '\', \'' + escapeJsAttr(name) + '\'); return false;" title="' + i18n.machine_changeIp + '">' +
+            '<i class="fas fa-sync-alt"></i></a>' +
+            '</div>';
+    }
+
+    function buildVnicRow(vnic, isPrimary) {
+        var ipv6Count = vnic.ipv6Addresses ? vnic.ipv6Addresses.length : 0;
+        var name = vnic.vnicDisplayName || (isPrimary ? i18n.net_homeVnic2 : 'VNIC');
+        var vnicId = vnic.vnicId || '';
+        var subnetId = vnic.subnetId || '';
+        var typeLabel = isPrimary ? '主' : '辅';
+        var typeCls = isPrimary ? 'type-primary' : 'type-secondary';
+        var nameTitle = name + (vnicId ? ('\n' + vnicId) : '');
+        var nameShow = ellipsisMiddle(name, 22);
+        var idShow = vnicId ? ellipsisMiddle(vnicId, 20) : '';
+        var subnetShow = subnetId ? ellipsisMiddle(subnetId, 22) : '—';
+
+        var ddId = 'vnic-dd-' + (vnicId || Math.random().toString(36).slice(2, 8));
+        var actions =
+            '<div class="dropdown">' +
+            '<button type="button" class="dropdown-toggle btn" data-dropdown-id="' + ddId + '"' +
+            ' onclick="handleDynamicToggle(this, event)" title="操作">' +
+            '<i class="fas fa-ellipsis-v"></i></button>' +
+            '<div class="dropdown-panel" data-dropdown-id="' + ddId + '">' +
+            '<button type="button" class="dropdown-item" onclick="showIpv6Modal(\'' + escapeJsAttr(vnicId) + '\', \'' + escapeJsAttr(name) + '\')">' +
+            '<i class="fas fa-eye"></i><span>' + i18n.net_findIpv6 +
+            (isPrimary
+                ? ' (<span id="primary-ipv6-count">' + ipv6Count + '</span>)'
+                : ' (<span class="ipv6-count" data-vnic-id="' + escapeHtml(vnicId) + '">' + ipv6Count + '</span>)') +
+            '</span></button>' +
+            '<button type="button" class="dropdown-item" onclick="showCreateIpv6ForVnicModal(\'' + escapeJsAttr(vnicId) + '\')">' +
+            '<i class="fas fa-plus"></i><span>' + i18n.net_addIpv6 + '</span></button>' +
+            (subnetId
+                ? '<button type="button" class="dropdown-item" onclick="copyToClipboard(\'' + escapeJsAttr(subnetId) + '\', this)">' +
+                  '<i class="fas fa-copy"></i><span>复制子网</span></button>'
+                : '') +
+            (vnicId
+                ? '<button type="button" class="dropdown-item" onclick="copyToClipboard(\'' + escapeJsAttr(vnicId) + '\', this)">' +
+                  '<i class="fas fa-fingerprint"></i><span>复制 VNIC ID</span></button>'
+                : '') +
+            (isPrimary ? '' :
+                '<button type="button" class="dropdown-item danger" onclick="showDeleteVnicModal(\'' + escapeJsAttr(vnicId) + '\', \'' + escapeJsAttr(name) + '\')">' +
+                '<i class="fas fa-trash"></i><span>' + i18n.net_deleteVnic + '</span></button>') +
+            '</div></div>';
+
+        return '<tr class="' + (isPrimary ? 'row-primary' : 'row-secondary') + '" data-vnic-id="' + escapeHtml(vnicId) + '">' +
+            '<td class="col-name" title="' + escapeHtml(nameTitle) + '">' +
+            '<div class="name-main cell-ellipsis">' + escapeHtml(nameShow) + '</div>' +
+            (idShow ? '<div class="name-sub cell-ellipsis" title="' + escapeHtml(vnicId) + '">' + escapeHtml(idShow) + '</div>' : '') +
+            '</td>' +
+            '<td class="col-type"><span class="type-tag ' + typeCls + '">' + escapeHtml(typeLabel) + '</span></td>' +
+            '<td class="col-status">' + statusBadgeHtml(vnic.lifecycleState) + '</td>' +
+            '<td class="col-ip">' + ipCellHtml(vnic.publicIp, vnicId, name, isPrimary) + '</td>' +
+            '<td class="col-ip"><span class="ip-text" title="' + escapeHtml(vnic.privateIp || '') + '">' +
+            escapeHtml(vnic.privateIp || '—') + '</span></td>' +
+            '<td class="col-subnet" title="' + escapeHtml(subnetId || '') + '">' +
+            '<span class="subnet-text cell-ellipsis">' + escapeHtml(subnetShow) + '</span></td>' +
+            '<td class="col-ipv6"><span class="ipv6-num">' + ipv6Count + '</span></td>' +
+            '<td class="col-actions">' + actions + '</td>' +
+            '</tr>';
+    }
+
+    function updateVnicTable(vnicList, primaryVnic, secondaryVnics) {
+        var tbody = document.getElementById('vnicTableBody');
+        var tableWrap = document.getElementById('vnicTableWrap');
+        var emptyAll = document.getElementById('emptyVnicState');
+        var emptySecondary = document.getElementById('emptySecondaryState');
+        var idle = document.getElementById('idleVnicState');
+        if (emptySecondary) emptySecondary.style.display = 'none';
+        if (idle) idle.style.display = 'none';
+
+        var rows = [];
+        // 优先完整列表；否则拼主+辅
+        if (vnicList && vnicList.length) {
+            for (var i = 0; i < vnicList.length; i++) {
+                var v = vnicList[i];
+                var isPrimary = !!(v.isPrimary || (primaryVnic && v.vnicId === primaryVnic.vnicId));
+                rows.push(buildVnicRow(v, isPrimary));
+            }
         } else {
-            primaryVnicSection.style.display = 'none';
+            if (primaryVnic) rows.push(buildVnicRow(primaryVnic, true));
+            if (secondaryVnics && secondaryVnics.length) {
+                for (var j = 0; j < secondaryVnics.length; j++) {
+                    rows.push(buildVnicRow(secondaryVnics[j], false));
+                }
+            }
+        }
+
+        if (!rows.length) {
+            if (tbody) tbody.innerHTML = '';
+            if (tableWrap) tableWrap.style.display = 'none';
+            if (emptyAll) emptyAll.style.display = 'block';
+            return;
+        }
+        if (tableWrap) tableWrap.style.display = 'block';
+        if (emptyAll) emptyAll.style.display = 'none';
+        if (tbody) tbody.innerHTML = rows.join('');
+    }
+
+    // 保留空实现，避免外部若仍调用旧函数时报错
+    function updatePrimaryVnicDisplay(primaryVnic) {
+        if (window.vnicData) {
+            updateVnicTable(window.vnicData.vnicList, primaryVnic || window.vnicData.primaryVnic, window.vnicData.secondaryVnics);
         }
     }
 
     function updateSecondaryVnicsDisplay(secondaryVnics) {
-        const secondaryVnicContent = document.getElementById('secondaryVnicContent');
-        const emptySecondaryState = document.getElementById('emptySecondaryState');
-
-        if (secondaryVnics && secondaryVnics.length > 0) {
-            emptySecondaryState.style.display = 'none';
-
-            var secondaryHtmlArray = [];
-            for (var i = 0; i < secondaryVnics.length; i++) {
-                var vnic = secondaryVnics[i];
-                var ipv6Count = vnic.ipv6Addresses ? vnic.ipv6Addresses.length : 0;
-
-                secondaryHtmlArray.push(
-                    '<div class="vnic-card secondary">' +
-                    '<div class="vnic-card-header">' +
-                    '<div class="vnic-icon">' +
-                    '<i class="fas fa-ethernet"></i>' +
-                    '</div>' +
-                    '<div class="vnic-title">' +
-                    '<div class="vnic-name">' + (vnic.vnicDisplayName || 'VNIC') + '</div>' +
-                    '<div class="vnic-type">'+i18n.net_otherInterface+'</div>' +
-                    '</div>' +
-                    '</div>' +
-                    '<div class="vnic-content">' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">VNIC ID:</span>' +
-                    '<span class="info-value">' + (vnic.vnicId || '') + '</span>' +
-                    '</div>' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">'+i18n.net_privateIpv+':</span>' +
-                    '<span class="info-value">' + (vnic.privateIp || 'unKnow') + '</span>' +
-                    '</div>' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">'+i18n.net_public+':</span>' +
-                    '<div class="info-value" style="display: flex; align-items: center; gap: 8px;">' +
-                    '<span class="ip-text" style="flex: 1;">' + (vnic.publicIp || 'unKnow') + '</span>' +
-                    '<a href="#" class="action-link copy" onclick="copyToClipboard(\'' + (vnic.publicIp || '') + '\', this)" title="'+i18n.machine_copyIp+'">' +
-                    '<i class="fas fa-copy"></i>' +
-                    '</a>' +
-                    '<a href="#" class="action-link switch" onclick="handleSwitchVnicIp(\'' + vnic.vnicId + '\', \'' + (vnic.vnicDisplayName || '辅助VNIC') + '\')" title="切换IP">' +
-                    '<i class="fas fa-sync-alt"></i>' +
-                    '</a>' +
-                    '</div>' +
-                    '</div>' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">'+i18n.net_subnetId+':</span>' +
-                    '<span class="info-value">' + (vnic.subnetId || 'unKnow') + '</span>' +
-                    '</div>' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">'+i18n.net_status+':</span>' +
-                    '<span class="info-value">' + (vnic.lifecycleState || 'unKnow') + '</span>' +
-                    '</div>' +
-                    '<div class="vnic-info-item">' +
-                    '<span class="info-label">IPv6:</span>' +
-                    '<div class="info-value">' +
-                    '<button class="btn btn-sm btn-info" onclick="showIpv6Modal(\'' + vnic.vnicId + '\', \'' + (vnic.vnicDisplayName || 'VNIC') + '\')">' +
-                    '<i class="fas fa-eye"></i> '+i18n.net_findIpv6+' (<span class="ipv6-count" data-vnic-id="' + vnic.vnicId + '">' + ipv6Count + '</span>)' +
-                    '</button>' +
-                    '</div>' +
-                    '</div>' +
-                    '</div>' +
-                    '<div class="vnic-actions">' +
-                    '<button class="btn btn-sm btn-warning" onclick="showCreateIpv6ForVnicModal(\'' + vnic.vnicId + '\')">' +
-                    '<i class="fas fa-plus"></i> '+i18n.net_addIpv6+'' +
-                    '</button>' +
-                    '<button class="btn btn-sm btn-danger" onclick="showDeleteVnicModal(\'' + vnic.vnicId + '\', \'' + (vnic.vnicDisplayName || '此VNIC') + '\')">' +
-                    '<i class="fas fa-trash"></i> '+i18n.net_deleteVnic+'' +
-                    '</button>' +
-                    '</div>' +
-                    '</div>'
-                );
-            }
-            secondaryVnicContent.innerHTML = secondaryHtmlArray.join('');
-        } else {
-            secondaryVnicContent.innerHTML = '';
-            emptySecondaryState.style.display = 'block';
+        if (window.vnicData) {
+            updateVnicTable(window.vnicData.vnicList, window.vnicData.primaryVnic, secondaryVnics || window.vnicData.secondaryVnics);
         }
     }
     function showIpv6Modal(vnicId, vnicName) {
