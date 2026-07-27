@@ -1587,11 +1587,70 @@ textarea::placeholder { color: var(--text-secondary); }
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* ── 审计日志弹框：限制高度，标题始终可见 ── */
+#auditLogModal.modal-overlay {
+    align-items: center;
+    padding: 16px;
+    overflow: hidden;
+}
+
+#auditLogModal .audit-log-modal {
+    max-width: 860px;
+    width: min(92vw, 860px);
+    max-height: min(82vh, 720px);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0;
+}
+
+#auditLogModal .audit-log-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+}
+
+#auditLogModal .audit-log-modal-header .modal-title {
+    margin: 0;
+    font-size: 15px;
+}
+
+#auditLogModal .audit-log-modal-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: 10px;
+}
+
+#auditLogModal .audit-log-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+#auditLogModal .audit-log-filters .form-control {
+    width: 140px;
+    padding: 5px 8px;
+    font-size: 13px;
+}
+
 #auditLogTableContainer {
-    max-height: 500px;
+    flex: 1;
+    min-height: 120px;
+    max-height: none;
     overflow-y: auto;
     border: 1px solid var(--card-border);
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
 #auditLogTable thead th {
@@ -1600,32 +1659,89 @@ textarea::placeholder { color: var(--text-secondary); }
     background-color: var(--hover-bg);
     z-index: 5;
     box-shadow: 0 1px 0 rgba(0,0,0,0.05);
-}
-
-#auditLogTable thead th {
     text-align: center;
     font-weight: 500;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 12px;
+    padding: 8px 6px;
 }
 
-#auditLogTableContainer {
-    max-height: 500px;
-    overflow-y: auto;
-    border: 1px solid var(--card-border);
-    border-radius: 4px;
+#auditLogTable tbody td {
+    font-size: 12px;
+    padding: 7px 6px;
+    vertical-align: top;
+    word-break: break-all;
 }
 
-#auditLogTable thead th {
-    position: sticky;
-    top: 0;
-    background-color: var(--hover-bg);
-    z-index: 5;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.05);
-    text-align: center;
-    font-weight: 500;
-    color: var(--text-secondary);
-    font-size: 13px;
+/* 审计日志弹框内分页：更紧凑，固定在底部不抢标题空间 */
+.audit-log-pagination {
+    flex-shrink: 0;
+}
+
+.audit-log-pagination .pagination-container {
+    margin: 0;
+}
+
+.audit-log-pagination .pagination-wrapper {
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    justify-content: center;
+}
+
+.audit-log-pagination .page-size-selector {
+    display: none;
+}
+
+.audit-log-pagination .nav-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.audit-log-pagination .page-btn {
+    min-width: 30px;
+    height: 30px;
+    font-size: 12px;
+}
+
+.audit-log-pagination .pagination-ellipsis {
+    width: 28px;
+    height: 30px;
+}
+
+.audit-log-pagination .pagination-info {
+    gap: 10px;
+}
+
+.audit-log-pagination .page-jump {
+    font-size: 12px;
+    gap: 6px;
+}
+
+.audit-log-pagination .jump-input {
+    width: 48px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+.audit-log-pagination .jump-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+}
+
+.audit-log-pagination .total-info {
+    font-size: 12px;
+    gap: 8px;
+}
+
+@media (max-width: 768px) {
+    #auditLogModal .audit-log-modal {
+        max-height: 85vh !important;
+        width: 100% !important;
+        max-width: none !important;
+        overflow: hidden !important;
+    }
 }
 
 .audit-error-row {
@@ -1912,14 +2028,26 @@ textarea::placeholder { color: var(--text-secondary); }
     opacity: 0.65;
 }
 
+/* 默认遮罩态：限制宽度，避免挤占其它列 */
 .col-name {
     max-width: 180px;
     overflow: hidden;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* 展开态：单行完整显示（不换行），通过放宽本列 + 表格横向滚动容纳长名 */
+.col-name.name-expanded,
+.col-name:has(.name-spoiler.is-visible) {
+    max-width: none;
+    width: auto;
+    overflow: visible;
+    white-space: nowrap !important;
 }
 
 /* 遮罩/显示切换容器 — 覆盖全局 .is-hidden 的 blur 效果 */
 .name-spoiler {
-    display: block;
+    display: inline-block;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1927,6 +2055,7 @@ textarea::placeholder { color: var(--text-secondary); }
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
+    vertical-align: middle;
 }
 
 /* 默认隐藏：只显示遮罩文本 */
@@ -1943,13 +2072,53 @@ textarea::placeholder { color: var(--text-secondary); }
     display: none;
 }
 
-/* 展开：只显示完整文本 */
+/* 展开：单行完整显示，禁止换行与 ellipsis 截断 */
+.name-spoiler.is-visible {
+    display: inline-block;
+    max-width: none;
+    width: max-content;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
 .name-spoiler.is-visible .name-masked {
     display: none;
 }
 .name-spoiler.is-visible .name-full {
     display: inline;
     color: var(--text-primary);
+    white-space: nowrap;
+}
+
+/* 名称展开时压缩其它列，把宽度让给租户名单行显示；表格可横向滚动 */
+.table-view:has(.name-spoiler.is-visible) {
+    overflow-x: auto;
+}
+.table-view:has(.name-spoiler.is-visible) .table {
+    min-width: max(800px, 100%);
+}
+.table-view:has(.name-spoiler.is-visible) .cell-edit-link {
+    max-width: 88px;
+}
+.table-view:has(.name-spoiler.is-visible) .col-secondary {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.table-view:has(.name-spoiler.is-visible) td.col-code {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.table-view:has(.name-spoiler.is-visible) td.col-center {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.table-view:has(.name-spoiler.is-visible) .days-chip {
+    max-width: 56px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* 可点击编辑的超链接单元格 */
