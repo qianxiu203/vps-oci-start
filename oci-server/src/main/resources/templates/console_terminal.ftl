@@ -982,22 +982,44 @@
             return;
         }
 
+        var savedTftp = '';
+        try { savedTftp = localStorage.getItem('oci_netboot_tftp') || ''; } catch (e) {}
+
         Swal.fire({
             icon: 'warning',
             title: '确认执行一键网络救援？',
-            html: '此操作将<b>强制重启</b>实例，并在底层截获引导流进入网络救援系统。<br><br><span style="color:#f78166">预计耗时 1-3 分钟，期间请勿关闭页面。</span>',
+            html:
+                '此操作将<b>强制重启</b>实例，并在底层截获引导流进入网络救援系统。<br><br>' +
+                '<span style="color:#f78166">预计耗时 1-3 分钟，期间请勿关闭页面。</span><br><br>' +
+                '<div style="text-align:left;font-size:13px;line-height:1.5;">' +
+                '<b>TFTP 节点（可选）</b><br>' +
+                '填写自建 TFTP 的 IP，将优先 <code>tftp &lt;IP&gt; amd.efi</code>。<br>' +
+                '留空则直接从公网 HTTP 下载 netboot.xyz（推荐）。' +
+                '</div>',
+            input: 'text',
+            inputLabel: 'TFTP 节点 IP',
+            inputPlaceholder: '例如 38.76.204.167，多个用逗号分隔；可留空',
+            inputValue: savedTftp,
             showCancelButton: true,
             confirmButtonText: '确认执行',
             cancelButtonText: i18n.common_cancel,
             confirmButtonColor: '#8a2be2'
         }).then((result) => {
             if (result.isConfirmed) {
-                executeAutoNetboot(instanceIdInput, tenantIdInput, displayName);
+                var tftpHost = (result.value || '').trim();
+                try {
+                    if (tftpHost) {
+                        localStorage.setItem('oci_netboot_tftp', tftpHost);
+                    } else {
+                        localStorage.removeItem('oci_netboot_tftp');
+                    }
+                } catch (e) {}
+                executeAutoNetboot(instanceIdInput, tenantIdInput, displayName, tftpHost);
             }
         });
     }
 
-    function executeAutoNetboot(instanceIdInput, tenantIdInput, displayName) {
+    function executeAutoNetboot(instanceIdInput, tenantIdInput, displayName, tftpHost) {
         if (connecting) return;
         connecting = true;
 
@@ -1006,7 +1028,10 @@
         document.getElementById('vnc-display').style.display = 'none';
         var logBox = document.getElementById('netboot-logs');
         logBox.style.display = 'block';
-        logBox.innerHTML = '<div style="color: #4d9eff; margin-bottom: 10px;">>_ 开始与后端建立劫持通道...</div>';
+        var tftpHint = tftpHost
+            ? 'TFTP 优先: ' + tftpHost
+            : '未指定 TFTP，将使用公网 HTTP';
+        logBox.innerHTML = '<div style="color: #4d9eff; margin-bottom: 10px;">>_ 开始与后端建立劫持通道... (' + tftpHint + ')</div>';
 
         updateConnectionStatus('connecting', '正在下发救援指令...');
 
@@ -1023,13 +1048,13 @@
 
         websocket.onopen = function() {
             startHeartbeat();
-            // 发送我们在后端写好的路由指令 'auto_netboot'
             websocket.send(JSON.stringify({
                 type: 'auto_netboot',
                 data: {
                     instanceId: instanceIdInput,
                     tenantId: tenantIdInput,
-                    displayName: displayName
+                    displayName: displayName,
+                    tftpHost: tftpHost || ''
                 }
             }));
         };

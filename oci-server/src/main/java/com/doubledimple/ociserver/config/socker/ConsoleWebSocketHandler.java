@@ -40,6 +40,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.doubledimple.ociserver.service.oracle.OciNetBootService.ROOT_PASSWORD;
+
 @Slf4j
 @Component("consoleWebSocketHandler")
 @Qualifier("consoleWebSocketHandler")
@@ -1070,6 +1072,19 @@ public class ConsoleWebSocketHandler extends TextWebSocketHandler {
             String instanceDetailsId = (String) data.get("instanceId");
             Long tenantId = Long.valueOf(data.get("tenantId").toString());
             String displayName = (String) data.get("displayName");
+            // 用户可选自建 TFTP；空则后端直接 HTTP 公网
+            String tftpHost = null;
+            if (data.get("tftpHost") != null) {
+                tftpHost = data.get("tftpHost").toString().trim();
+                if (tftpHost.isEmpty()) {
+                    tftpHost = null;
+                }
+            }
+            if (tftpHost != null) {
+                sendMessage(webSocketSession, "📡 将优先使用您指定的 TFTP 节点: " + tftpHost + "\r\n");
+            } else {
+                sendMessage(webSocketSession, "📡 未指定 TFTP，将使用公网 HTTP 下载 netboot.xyz\r\n");
+            }
 
             // 2. 获取实例和租户信息
             InstanceDetails instanceDetails = oracleInstanceService.getInstanceById(Long.valueOf(instanceDetailsId));
@@ -1102,10 +1117,11 @@ public class ConsoleWebSocketHandler extends TextWebSocketHandler {
                 return;
             }
 
-            sendMessage(webSocketSession, "🔌 串口底层控制通道已就绪！\r\n");
+            sendMessage(webSocketSession, "🔌 系统重置已就绪！\r\n");
             sendMessage(webSocketSession, "🔄 正在向 OCI 发送硬重启 (RESET) 指令...\r\n");
-            sendMessage(webSocketSession, "⏳ 开始拦截引导流，这是一个耗时操作 (预计 1-3 分钟)，请耐心等待，不要关闭窗口...\r\n");
+            sendMessage(webSocketSession, "⏳ 正在执行中,请耐心等待，不要关闭窗口...\r\n");
 
+            final String finalTftpHost = tftpHost;
             Thread netbootThread = new Thread(() -> {
                 try {
                     boolean success = ociNetBootService.executeAutoNetBoot(
@@ -1113,13 +1129,16 @@ public class ConsoleWebSocketHandler extends TextWebSocketHandler {
                             instanceDetails,
                             sshConfig,
                             connection.getPrivateKeyPath(),
-                            instanceDetails.getArchitecture()
+                            instanceDetails.getArchitecture(),
+                            finalTftpHost
                     );
 
                     if (success) {
-                        sendMessage(webSocketSession, "\r\n🎉 [成功] 🎯 截获引导流成功，Netboot 引导指令已下发！\r\n");
-                        sendMessage(webSocketSession, "👉 您的实例正在从网络加载微型救援系统 (如 netboot.xyz 或 Alpine)。\r\n");
-                        sendMessage(webSocketSession, "⏳ 请等待 2-3 分钟网络系统启动完毕后，通过普通的 SSH 客户端连接您的服务器 IP 进行 DD 刷机操作。\r\n");
+                        sendMessage(webSocketSession, "\r\n🎉 [成功] 🎯 恭喜你,你的系统已经重置成功！\r\n");
+                        sendMessage(webSocketSession, "\r\n请根据如下登录信息登录验证\r\n");
+                        sendMessage(webSocketSession, "\r\n账户名: root\r\n");
+                        sendMessage(webSocketSession, "\r\n密码: \r\n"+ROOT_PASSWORD);
+
                     } else {
                         sendMessage(webSocketSession, "\r\n❌ [失败] 截获启动流超时或失败。实例可能未成功重启，或错过了进入 iPXE 的时间窗口。\r\n");
                         sendMessage(webSocketSession, "💡 建议：您可以再次点击尝试，或者前往控制台查看详细日志。\r\n");

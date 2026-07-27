@@ -198,6 +198,30 @@ function initFormValidation() {
     });
 }
 
+/** 填充版本下拉；默认选中该系统下第一个版本，并同步 hidden 字段 */
+function fillVersionOptions(versionSelect, systemMap, selectedOs) {
+    versionSelect.innerHTML = '<option value="">' + i18n.ins_plzVersion + '</option>';
+    document.getElementById('operatingSystemHidden').value = selectedOs || '';
+    document.getElementById('operatingSystemVersionHidden').value = '';
+    document.getElementById('imageIdHidden').value = '';
+
+    if (selectedOs && systemMap[selectedOs] && systemMap[selectedOs].length) {
+        systemMap[selectedOs].forEach(function (v) {
+            const opt = document.createElement('option');
+            opt.value = v.operatingSystemVersion;
+            opt.textContent = v.operatingSystemVersion;
+            opt.dataset.imageId = v.imageId;
+            versionSelect.appendChild(opt);
+        });
+        // 默认选中对应系统的第一个版本
+        const first = systemMap[selectedOs][0];
+        versionSelect.value = first.operatingSystemVersion;
+        document.getElementById('operatingSystemVersionHidden').value = first.operatingSystemVersion || '';
+        document.getElementById('imageIdHidden').value = first.imageId || '';
+    }
+    if (window.CustomSelect) CustomSelect.refresh(versionSelect);
+}
+
 function fetchSystemImages(tenantId, shapeType) {
     showLoading("loading...");
     fetch('/tenants/querySystemImages', {
@@ -223,28 +247,15 @@ function fetchSystemImages(tenantId, shapeType) {
                 systemMap[item.operatingSystem].push(item);
             });
 
-            Object.keys(systemMap).forEach(os => {
+            const osKeys = Object.keys(systemMap);
+            osKeys.forEach(os => {
                 const opt = document.createElement('option');
                 opt.value = os; opt.textContent = os;
                 systemSelect.appendChild(opt);
             });
 
             systemSelect.onchange = function() {
-                const selected = this.value;
-                versionSelect.innerHTML = '<option value="">'+i18n.ins_plzVersion+'</option>';
-                document.getElementById('operatingSystemHidden').value = selected || '';
-                document.getElementById('operatingSystemVersionHidden').value = '';
-                document.getElementById('imageIdHidden').value = '';
-
-                if (selected && systemMap[selected]) {
-                    systemMap[selected].forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v.operatingSystemVersion;
-                        opt.textContent = v.operatingSystemVersion;
-                        opt.dataset.imageId = v.imageId;
-                        versionSelect.appendChild(opt);
-                    });
-                }
+                fillVersionOptions(versionSelect, systemMap, this.value);
             };
 
             versionSelect.onchange = function() {
@@ -252,6 +263,16 @@ function fetchSystemImages(tenantId, shapeType) {
                 document.getElementById('operatingSystemVersionHidden').value = selectedOption.value || '';
                 document.getElementById('imageIdHidden').value = selectedOption.dataset.imageId || '';
             };
+
+            // 默认选中第一个操作系统，并级联选中其第一个版本
+            if (osKeys.length > 0) {
+                systemSelect.value = osKeys[0];
+                fillVersionOptions(versionSelect, systemMap, osKeys[0]);
+            }
+            if (window.CustomSelect) {
+                CustomSelect.refresh(systemSelect);
+                CustomSelect.refresh(versionSelect);
+            }
 
             document.getElementById('system-section').style.display = 'block';
         })
