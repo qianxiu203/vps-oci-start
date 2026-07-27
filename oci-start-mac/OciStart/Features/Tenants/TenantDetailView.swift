@@ -13,7 +13,7 @@ struct TenantDetailView: View {
     private var dark: Bool { appearance.isDarkEffective }
     private var parent: TenantItem? { model.detailParent }
 
-    // 列宽
+    // 列宽（遮罩态）
     private let wIndex: CGFloat = 40
     private let wTask: CGFloat = 72
     private let wRegion: CGFloat = 110
@@ -21,9 +21,26 @@ struct TenantDetailView: View {
     private let wSync: CGFloat = 72
     private let wTime: CGFloat = 132
     private let wAction: CGFloat = 168
-    private let minName: CGFloat = 120
-    private let minDef: CGFloat = 96
+    private let minNameHidden: CGFloat = 120
+    private let minDefHidden: CGFloat = 96
     private let hPad: CGFloat = 14
+
+    /// 显示全名时压缩其它列，名称列单行加宽（禁止换行）
+    private func detailColMetrics(namesHidden: Bool) -> (
+        task: CGFloat, region: CGFloat, home: CGFloat, sync: CGFloat, time: CGFloat,
+        action: CGFloat, minName: CGFloat, minDef: CGFloat
+    ) {
+        if namesHidden {
+            return (wTask, wRegion, wHome, wSync, wTime, wAction, minNameHidden, minDefHidden)
+        }
+        return (60, 88, 52, 60, 108, 148, 200, 72)
+    }
+
+    private func estimatedDetailNameWidth(floor: CGFloat) -> CGFloat {
+        let longest = model.detailRows.map(\.displayName).max(by: { $0.count < $1.count }) ?? ""
+        let estimated = CGFloat(longest.count) * 8.0 + 12
+        return max(floor, min(estimated, 720))
+    }
 
     private var syncedCount: Int {
         model.detailRows.filter(\.apiSynced).count
@@ -203,26 +220,44 @@ struct TenantDetailView: View {
             .background(tableCardBackground)
         } else {
             GeometryReader { geo in
-                let fixed = wIndex + wTask + wRegion + wHome + wSync + wTime + wAction + minName + minDef + hPad * 2
+                let m = detailColMetrics(namesHidden: model.detailNamesHidden)
+                let nameNeed: CGFloat = model.detailNamesHidden
+                    ? m.minName
+                    : estimatedDetailNameWidth(floor: m.minName)
+                let fixed = wIndex + m.task + m.region + m.home + m.sync + m.time + m.action
+                    + nameNeed + m.minDef + hPad * 2
                 let totalW = max(geo.size.width, fixed)
                 let flex = max(0, totalW - fixed)
-                let wName = minName + flex * 0.55
-                let wDef = minDef + flex * 0.45
+                let nameShare: CGFloat = model.detailNamesHidden ? 0.55 : 0.75
+                let wName = nameNeed + flex * nameShare
+                let wDef = m.minDef + flex * (1 - nameShare)
 
-                VStack(spacing: 0) {
-                    headerRow(wName: wName, wDef: wDef, width: totalW)
-                    ScrollView {
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    VStack(spacing: 0) {
+                        headerRow(
+                            wName: wName, wDef: wDef,
+                            task: m.task, region: m.region, home: m.home,
+                            sync: m.sync, time: m.time, action: m.action,
+                            width: totalW
+                        )
                         // 必须用 offset 做 identity：regionList 在异常/兜底数据下可能出现重复 id，
                         // macOS 11 SwiftUI 会 fatalError「each layout item may only occur once」直接退出。
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.detailRows.enumerated()), id: \.offset) { idx, row in
-                                dataRow(index: idx, item: row, wName: wName, wDef: wDef, width: totalW)
-                                    .id("detail-row-\(idx)-\(row.id)")
+                                dataRow(
+                                    index: idx, item: row,
+                                    wName: wName, wDef: wDef,
+                                    task: m.task, region: m.region, home: m.home,
+                                    sync: m.sync, time: m.time, action: m.action,
+                                    width: totalW
+                                )
+                                .id("detail-row-\(idx)-\(row.id)")
                             }
                         }
                     }
+                    .frame(width: totalW, alignment: .topLeading)
                 }
-                .frame(width: totalW, height: geo.size.height, alignment: .topLeading)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(tableCardBackground)
@@ -240,17 +275,22 @@ struct TenantDetailView: View {
             .fill(AppTheme.sidebarBg(dark))
     }
 
-    private func headerRow(wName: CGFloat, wDef: CGFloat, width: CGFloat) -> some View {
+    private func headerRow(
+        wName: CGFloat, wDef: CGFloat,
+        task: CGFloat, region: CGFloat, home: CGFloat,
+        sync: CGFloat, time: CGFloat, action: CGFloat,
+        width: CGFloat
+    ) -> some View {
         HStack(spacing: 0) {
             colHeader("#", wIndex)
             colHeader("名称", wName)
             colHeader("自定义名", wDef)
-            colHeader("开机任务", wTask)
-            colHeader("区域", wRegion)
-            colHeader("主区域", wHome)
-            colHeader("同步", wSync)
-            colHeader("创建时间", wTime)
-            colHeader("操作", wAction, align: .center)
+            colHeader("开机任务", task)
+            colHeader("区域", region)
+            colHeader("主区域", home)
+            colHeader("同步", sync)
+            colHeader("创建时间", time)
+            colHeader("操作", action, align: .center)
         }
         .padding(.horizontal, hPad)
         .padding(.vertical, 10)
@@ -262,25 +302,31 @@ struct TenantDetailView: View {
         )
     }
 
-    private func dataRow(index: Int, item: TenantItem, wName: CGFloat, wDef: CGFloat, width: CGFloat) -> some View {
+    private func dataRow(
+        index: Int, item: TenantItem,
+        wName: CGFloat, wDef: CGFloat,
+        task: CGFloat, region: CGFloat, home: CGFloat,
+        sync: CGFloat, time: CGFloat, action: CGFloat,
+        width: CGFloat
+    ) -> some View {
         let hovered = hoveredRowId == item.id
         return HStack(spacing: 0) {
             cell("\(index + 1)", wIndex, muted: true)
             nameCell(item, width: wName)
             cell(item.defNameText, wDef)
             taskCell(item)
-                .frame(width: wTask, alignment: .leading)
-            regionCell(item, width: wRegion)
+                .frame(width: task, alignment: .leading)
+            regionCell(item, width: region)
             homeBadge(item)
-                .frame(width: wHome, alignment: .leading)
+                .frame(width: home, alignment: .leading)
             StatusBadge(
                 text: item.syncStatusText,
                 tone: item.apiSynced ? .success : .danger
             )
-            .frame(width: wSync, alignment: .leading)
-            cell(item.createdAt.isEmpty ? "—" : item.createdAt, wTime, muted: true)
+            .frame(width: sync, alignment: .leading)
+            cell(item.createdAt.isEmpty ? "—" : item.createdAt, time, muted: true)
             actionBar(item)
-                .frame(width: wAction, alignment: .center)
+                .frame(width: action, alignment: .center)
         }
         .padding(.horizontal, hPad)
         .padding(.vertical, 10)
@@ -308,20 +354,26 @@ struct TenantDetailView: View {
     }
 
     private func nameCell(_ item: TenantItem, width: CGFloat) -> some View {
-        Button(action: {
+        let shown = !model.detailNamesHidden
+        return Button(action: {
             withAnimation(.easeInOut(duration: 0.15)) {
                 model.detailNamesHidden.toggle()
             }
         }) {
-            Text(model.detailNamesHidden ? item.maskedName : item.displayName)
+            Text(shown ? item.displayName : item.maskedName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(dark ? Color.white.opacity(0.9) : Color.primary)
+                // 始终单行，禁止换行
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .frame(width: width, alignment: .leading)
+                .frame(height: 28, alignment: .center)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .help(model.detailNamesHidden ? "点击显示名称" : "点击隐藏名称")
+        .help(item.displayName.isEmpty
+              ? (shown ? "点击隐藏名称" : "点击显示名称")
+              : item.displayName)
     }
 
     private func taskCell(_ item: TenantItem) -> some View {

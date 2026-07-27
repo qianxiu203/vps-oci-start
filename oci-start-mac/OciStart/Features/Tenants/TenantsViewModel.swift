@@ -58,15 +58,26 @@ final class TenantsViewModel: ObservableObject {
     @Published var trafficAutoShutdown = false
     @Published var trafficStats = true
 
-    // Audit (full page, not sheet)
+    // Audit (full page, not sheet) — token 游标分页 + 统一 PaginationBar
     @Published var auditParent: TenantItem?
-    @Published var auditLogs: [TenantAuditLogEntry] = []
+    @Published var auditPageItems: [TenantAuditLogEntry] = []
+    @Published var auditPageState = PageState(page: 0, size: 50)
     @Published var auditStart = ""
     @Published var auditEnd = ""
     @Published var auditLoading = false
-    @Published var auditLoadingMore = false
-    @Published var auditNextPageToken: String?
     @Published var auditError: String?
+    /// 当前页是否还有下一页（用于 range 文案的 + 提示）
+    @Published var auditHasMore = false
+    /// 当前页展示序号起点（1-based）
+    @Published var auditRowStart = 1
+
+    /// 已缓存的服务端页（0-based）
+    private var auditPageCache: [Int: [TenantAuditLogEntry]] = [:]
+    /// 请求第 N 页所需 pageToken（第 0 页无 token，不写入）
+    private var auditTokenForPage: [Int: String] = [:]
+    /// 第 N 页返回的 nextPageToken（有下一页才写入）
+    private var auditNextTokenByPage: [Int: String] = [:]
+    private var auditMaxKnownPageIndex = 0
 
     // Email
     @Published var emailDomain = ""
@@ -862,21 +873,16 @@ final class TenantsViewModel: ObservableObject {
     func openAudit(_ item: TenantItem) {
         let today = Self.todayDateString()
         auditParent = item
-        auditLogs = []
-        auditNextPageToken = nil
-        auditError = nil
+        resetAuditPagination()
         auditStart = today
         auditEnd = today
-        Task { await loadAuditLogs(item, append: false) }
+        Task { await loadAuditPage(0) }
     }
 
     func closeAudit() {
         auditParent = nil
-        auditLogs = []
-        auditNextPageToken = nil
-        auditError = nil
+        resetAuditPagination()
         auditLoading = false
-        auditLoadingMore = false
     }
 
     func searchAudit(_ item: TenantItem) {
@@ -892,47 +898,127 @@ final class TenantsViewModel: ObservableObject {
             return
         }
         auditEnd = end
-        Task { await loadAuditLogs(item, append: false) }
+        resetAuditPagination()
+        Task { await loadAuditPage(0) }
     }
 
-    func loadMoreAudit(_ item: TenantItem) {
-        guard auditNextPageToken != nil, !auditLoadingMore, !auditLoading else { return }
-        Task { await loadAuditLogs(item, append: true) }
+    /// 刷新当前查询（从第 1 页重拉）
+    func reloadAudit() {
+        guard auditParent != nil else { return }
+        resetAuditPagination()
+        Task { await loadAuditPage(0) }
     }
 
-    func loadAuditLogs(_ item: TenantItem, append: Bool) async {
-        if append {
-            guard let token = auditNextPageToken, !token.isEmpty else { return }
-            auditLoadingMore = true
-        } else {
-            auditLoading = true
-            auditNextPageToken = nil
-            auditError = nil
-            auditLogs = []
+    /// PaginationBar 页码变化
+    func onAuditPageChange() {
+        let page = auditPageState.page
+        if let cached = auditPageCache[page] {
+            applyAuditPage(page, items: cached)
+            return
         }
-        defer {
-            auditLoading = false
-            auditLoadingMore = false
+        Task { await loadAuditPage(page) }
+    }
+
+    private func resetAuditPagination() {
+        auditPageCache = [:]
+        auditTokenForPage = [:]
+        auditNextTokenByPage = [:]
+        auditMaxKnownPageIndex = 0
+        auditPageItems = []
+        auditPageState = PageState(page: 0, size: 50)
+        auditHasMore = false
+        auditRowStart = 1
+        auditError = nil
+    }
+
+    func loadAuditPage(_ page: Int) async {
+        if page > 0, auditTokenForPage[page] == nil, auditPageCache[page] == nil {
+            // 未发现的页不可跳
+            if let fallback = auditPageCache.keys.sorted().last {
+                applyAuditPage(fallback, items: auditPageCache[fallback] ?? [])
+            }
+            return
         }
+        if let cached = auditPageCache[page] {
+            applyAuditPage(page, items: cached)
+            return
+        }
+
+        auditLoading = true
+        defer { auditLoading = false }
+
+        let token: String? = page == 0 ? nil : auditTokenForPage[page]
+
         do {
-            let page = try await service.auditLogs(
+            guard let item = auditParent else { return }
+            let result = try await service.auditLogs(
                 tenantId: item.id,
                 start: auditStart.isEmpty ? nil : auditStart,
                 end: auditEnd.isEmpty ? nil : auditEnd,
-                pageToken: append ? auditNextPageToken : nil
+                pageToken: token
             )
-            if append {
-                auditLogs.append(contentsOf: page.items)
+            auditPageCache[page] = result.items
+            if let next = result.nextPageToken, !next.isEmpty {
+                auditNextTokenByPage[page] = next
+                auditTokenForPage[page + 1] = next
+                auditMaxKnownPageIndex = max(auditMaxKnownPageIndex, page + 1)
             } else {
-                auditLogs = page.items
+                auditNextTokenByPage.removeValue(forKey: page)
+                auditMaxKnownPageIndex = max(auditMaxKnownPageIndex, page)
             }
-            auditNextPageToken = page.nextPageToken
+            applyAuditPage(page, items: result.items)
         } catch {
             auditError = error.localizedDescription
-            if !append {
-                ToastCenter.shared.error(error.localizedDescription)
+            ToastCenter.shared.error(error.localizedDescription)
+        }
+    }
+
+    private func applyAuditPage(_ page: Int, items: [TenantAuditLogEntry]) {
+        auditPageItems = items
+        auditPageState.page = page
+
+        var start = 0
+        if page > 0 {
+            for p in 0..<page {
+                start += (auditPageCache[p]?.count ?? 0)
             }
         }
+        auditRowStart = start + 1
+
+        let loaded = auditPageCache.values.reduce(0) { $0 + $1.count }
+        let hasMore = auditNextTokenByPage[page] != nil
+        auditHasMore = hasMore
+
+        var totalPages = auditMaxKnownPageIndex + 1
+        if hasMore {
+            totalPages = max(totalPages, page + 2)
+        }
+        if items.isEmpty && page == 0 && !hasMore {
+            auditPageState.apply(totalElements: 0, totalPages: 0)
+        } else {
+            // size 取当前页条数，避免 range 文案与真实行数偏差过大
+            let pageSize = max(items.count, 1)
+            if auditPageState.size != pageSize {
+                auditPageState.size = pageSize
+            }
+            auditPageState.apply(
+                totalElements: Int64(max(loaded, 0)),
+                totalPages: max(totalPages, 1)
+            )
+        }
+    }
+
+    /// PaginationBar 右侧统计文案
+    var auditRangeText: String {
+        let loaded = auditPageCache.values.reduce(0) { $0 + $1.count }
+        let pageCount = auditPageItems.count
+        let cur = auditPageState.displayPage
+        let total = max(auditPageState.totalPages, 1)
+        let plus = auditHasMore ? "+" : ""
+        if loaded == 0 {
+            return "共 0 条"
+        }
+        return "第 \(cur)/\(total)\(plus) 页 · 本页 \(pageCount) 条 · 已加载 \(loaded)\(plus) 条"
     }
 
     private static func todayDateString() -> String {

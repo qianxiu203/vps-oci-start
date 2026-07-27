@@ -22,13 +22,42 @@ struct TenantsView: View {
     private let wStatus: CGFloat = 56
     private let wAction: CGFloat = 52
     private let hPad: CGFloat = 12
-    private let minName: CGFloat = 88
-    private let minDef: CGFloat = 96
-    private let minRegion: CGFloat = 88
+    private let minNameHidden: CGFloat = 88
+    private let minNameShownFloor: CGFloat = 160
+    private let minDefHidden: CGFloat = 96
+    private let minDefShown: CGFloat = 72
+    private let minRegionHidden: CGFloat = 88
+    private let minRegionShown: CGFloat = 68
 
-    private var fixedColsWidth: CGFloat {
-        wProxy + wCost + wDays + wTask + wMulti + wType + wCreate + wTime + wStatus + wAction
-            + minName + minDef + minRegion + hPad * 2
+    /// 显示全名时压缩固定列，把宽度让给名称（单行不换行）
+    private func colMetrics(namesHidden: Bool) -> (
+        cost: CGFloat, days: CGFloat, task: CGFloat, multi: CGFloat,
+        type: CGFloat, create: CGFloat, time: CGFloat,
+        minName: CGFloat, minDef: CGFloat, minRegion: CGFloat
+    ) {
+        if namesHidden {
+            return (wCost, wDays, wTask, wMulti, wType, wCreate, wTime,
+                    minNameHidden, minDefHidden, minRegionHidden)
+        }
+        return (48, 48, 64, 44, 72, 52, 100,
+                minNameShownFloor, minDefShown, minRegionShown)
+    }
+
+    /// 按最长租户名单行估算名称列宽（约 12pt 等宽字符）
+    private func estimatedNameWidth(for items: [TenantItem], floor: CGFloat) -> CGFloat {
+        let longest = items.map(\.displayName).max(by: { $0.count < $1.count }) ?? ""
+        // 中文偏宽、英文偏窄，取折中系数
+        let estimated = CGFloat(longest.count) * 8.0 + 12
+        return max(floor, min(estimated, 720))
+    }
+
+    private func fixedColsWidth(m: (
+        cost: CGFloat, days: CGFloat, task: CGFloat, multi: CGFloat,
+        type: CGFloat, create: CGFloat, time: CGFloat,
+        minName: CGFloat, minDef: CGFloat, minRegion: CGFloat
+    )) -> CGFloat {
+        wProxy + m.cost + m.days + m.task + m.multi + m.type + m.create + m.time
+            + wStatus + wAction + m.minName + m.minDef + m.minRegion + hPad * 2
     }
 
     var body: some View {
@@ -69,8 +98,8 @@ struct TenantsView: View {
                 Task { await model.reloadDetail() }
             } else if let t = model.trafficParent {
                 Task { await model.queryTraffic(t) }
-            } else if let t = model.auditParent {
-                Task { await model.loadAuditLogs(t, append: false) }
+            } else if model.auditParent != nil {
+                model.reloadAudit()
             } else if let t = model.costParent {
                 Task { await model.queryCost(t) }
             } else if model.quotaParent != nil {
@@ -196,29 +225,39 @@ struct TenantsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             GeometryReader { geo in
-                let totalW = max(geo.size.width, fixedColsWidth)
-                let flexPool = max(0, totalW - fixedColsWidth)
-                // 名称 / 自定义名 / 主区域 分剩余宽度
-                let wName = minName + flexPool * 0.40
-                let wDef = minDef + flexPool * 0.35
-                let wRegion = minRegion + flexPool * 0.25
+                let m = colMetrics(namesHidden: model.namesHidden)
+                let nameNeed: CGFloat = model.namesHidden
+                    ? m.minName
+                    : estimatedNameWidth(for: model.rows, floor: m.minName)
+                // 固定列用压缩后的值；名称列至少吃到单行全名所需宽度
+                let baseFixed = fixedColsWidth(m: m) - m.minName + nameNeed
+                let totalW = max(geo.size.width, baseFixed)
+                let flexPool = max(0, totalW - baseFixed)
+                // 剩余宽度：遮罩时名称/自定义名/区域分；展开时优先名称
+                let nameShare: CGFloat = model.namesHidden ? 0.40 : 0.70
+                let defShare: CGFloat = model.namesHidden ? 0.35 : 0.18
+                let regionShare: CGFloat = 1 - nameShare - defShare
+                let wName = nameNeed + flexPool * nameShare
+                let wDef = m.minDef + flexPool * defShare
+                let wRegion = m.minRegion + flexPool * regionShare
                 let cols = TenantColWidths(
-                    proxy: wProxy, name: wName, def: wDef, cost: wCost, days: wDays,
-                    task: wTask, region: wRegion, multi: wMulti, type: wType,
-                    create: wCreate, time: wTime, status: wStatus, action: wAction, hPad: hPad
+                    proxy: wProxy, name: wName, def: wDef, cost: m.cost, days: m.days,
+                    task: m.task, region: wRegion, multi: m.multi, type: m.type,
+                    create: m.create, time: m.time, status: wStatus, action: wAction, hPad: hPad
                 )
 
-                VStack(spacing: 0) {
-                    headerRow(cols: cols, width: totalW)
-                    ScrollView {
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    VStack(spacing: 0) {
+                        headerRow(cols: cols, width: totalW)
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.rows.enumerated()), id: \.element.id) { idx, row in
                                 tenantRow(index: idx, item: row, cols: cols, width: totalW)
                             }
                         }
                     }
+                    .frame(width: totalW, alignment: .topLeading)
                 }
-                .frame(width: totalW, height: geo.size.height, alignment: .topLeading)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -260,8 +299,8 @@ struct TenantsView: View {
     }
 
     private func tenantRow(index: Int, item: TenantItem, cols: TenantColWidths, width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 0) {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
                 proxyShieldCell(item, width: cols.proxy)
                 nameCell(item, width: cols.name)
                 defNameCell(item, width: cols.def)
@@ -271,7 +310,7 @@ struct TenantsView: View {
                     .frame(width: cols.task, alignment: .leading)
                 cell(item.region.isEmpty ? "—" : item.region, cols.region)
             }
-            HStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
                 cell(item.multiRegionText, cols.multi)
                 typeCell(item, width: cols.type)
                 bootCell(item, width: cols.create)
@@ -324,14 +363,19 @@ struct TenantsView: View {
     }
 
     private func nameCell(_ item: TenantItem, width: CGFloat) -> some View {
-        Button(action: { model.namesHidden.toggle() }) {
-            Text(model.namesHidden ? item.maskedName : item.displayName)
+        let shown = !model.namesHidden
+        return Button(action: { model.namesHidden.toggle() }) {
+            Text(shown ? item.displayName : item.maskedName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(dark ? Color.white.opacity(0.9) : Color.primary)
+                // 始终单行；展开时靠加宽名称列完整显示，禁止换行
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .frame(width: width, alignment: .leading)
+                .frame(height: 28, alignment: .center)
         }
         .buttonStyle(PlainButtonStyle())
+        .help(item.displayName)
     }
 
     private func defNameCell(_ item: TenantItem, width: CGFloat) -> some View {

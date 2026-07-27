@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 租户审计日志整页 — 对应 Web `auditLogModal`，从租户列表进入，非弹框。
 /// 列对齐 Web：# / 用户 / 来源 IP / 事件 / 客户端环境 / 时间 / 状态
+/// 分页：统一 `PaginationBar`（OCI token 游标，无每页条数选择）
 struct TenantAuditLogView: View {
     @ObservedObject var model: TenantsViewModel
     @EnvironmentObject private var appearance: AppearanceController
@@ -31,11 +32,29 @@ struct TenantAuditLogView: View {
                         errorBanner(err)
                     }
                     listBody
+                    if shouldShowPagination {
+                        PaginationBar(
+                            state: $model.auditPageState,
+                            showsSizeSelector: false,
+                            showsJump: true,
+                            rangeTextOverride: model.auditRangeText
+                        ) {
+                            model.onAuditPageChange()
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+    }
+
+    private var shouldShowPagination: Bool {
+        // 有数据，或已发现多页 / 仍有下一页时展示
+        !model.auditPageItems.isEmpty
+            || model.auditPageState.totalPages > 1
+            || model.auditHasMore
+            || model.auditPageState.page > 0
     }
 
     // MARK: - Toolbar
@@ -46,8 +65,7 @@ struct TenantAuditLogView: View {
                 model.closeAudit()
             }
             AppButton(title: "刷新", systemImage: "arrow.clockwise", kind: .secondary) {
-                guard let t = tenant else { return }
-                Task { await model.loadAuditLogs(t, append: false) }
+                model.reloadAudit()
             }
             if model.auditLoading {
                 ProgressView().scaleEffect(0.7)
@@ -77,21 +95,9 @@ struct TenantAuditLogView: View {
                 }
             },
             trailing: {
-                HStack(spacing: 8) {
-                    AppButton(title: "查询", systemImage: "magnifyingglass", kind: .primary) {
-                        guard let t = tenant else { return }
-                        model.searchAudit(t)
-                    }
-                    if model.auditNextPageToken != nil {
-                        AppButton(
-                            title: model.auditLoadingMore ? "加载中…" : "加载更多",
-                            systemImage: "arrow.down.circle",
-                            kind: .secondary
-                        ) {
-                            guard let t = tenant else { return }
-                            model.loadMoreAudit(t)
-                        }
-                    }
+                AppButton(title: "查询", systemImage: "magnifyingglass", kind: .primary) {
+                    guard let t = tenant else { return }
+                    model.searchAudit(t)
                 }
             }
         )
@@ -103,8 +109,7 @@ struct TenantAuditLogView: View {
             Text(text).font(.system(size: 12))
             Spacer()
             Button("重试") {
-                guard let t = tenant else { return }
-                Task { await model.loadAuditLogs(t, append: false) }
+                model.reloadAudit()
             }
             .buttonStyle(PlainButtonStyle())
         }
@@ -117,7 +122,7 @@ struct TenantAuditLogView: View {
 
     @ViewBuilder
     private var listBody: some View {
-        if model.auditLoading && model.auditLogs.isEmpty {
+        if model.auditLoading && model.auditPageItems.isEmpty {
             VStack {
                 Spacer()
                 ProgressView()
@@ -128,7 +133,7 @@ struct TenantAuditLogView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.auditLogs.isEmpty {
+        } else if model.auditPageItems.isEmpty {
             EmptyStateView(
                 icon: "doc.text.magnifyingglass",
                 title: "暂无日志",
@@ -149,11 +154,15 @@ struct TenantAuditLogView: View {
                     headerRow(wEvent: wEvent, wEnv: wEnv, width: totalW)
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(model.auditLogs.enumerated()), id: \.offset) { idx, log in
-                                dataRow(index: idx, log: log, wEvent: wEvent, wEnv: wEnv, width: totalW)
-                            }
-                            if model.auditNextPageToken != nil {
-                                loadMoreFooter
+                            ForEach(Array(model.auditPageItems.enumerated()), id: \.offset) { idx, log in
+                                dataRow(
+                                    index: model.auditRowStart + idx - 1,
+                                    displayIndex: model.auditRowStart + idx,
+                                    log: log,
+                                    wEvent: wEvent,
+                                    wEnv: wEnv,
+                                    width: totalW
+                                )
                             }
                         }
                     }
@@ -162,31 +171,6 @@ struct TenantAuditLogView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private var loadMoreFooter: some View {
-        HStack {
-            Spacer()
-            if model.auditLoadingMore {
-                ProgressView().scaleEffect(0.7)
-                Text("加载中…")
-                    .font(.system(size: 12))
-                    .foregroundColor(AppTheme.sidebarText(dark))
-                    .padding(.leading, 6)
-            } else {
-                Button(action: {
-                    guard let t = tenant else { return }
-                    model.loadMoreAudit(t)
-                }) {
-                    Text("加载更多")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(AppTheme.sidebarActive)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            Spacer()
-        }
-        .padding(.vertical, 14)
     }
 
     private func headerRow(wEvent: CGFloat, wEnv: CGFloat, width: CGFloat) -> some View {
@@ -209,11 +193,18 @@ struct TenantAuditLogView: View {
         )
     }
 
-    private func dataRow(index: Int, log: TenantAuditLogEntry, wEvent: CGFloat, wEnv: CGFloat, width: CGFloat) -> some View {
+    private func dataRow(
+        index: Int,
+        displayIndex: Int,
+        log: TenantAuditLogEntry,
+        wEvent: CGFloat,
+        wEnv: CGFloat,
+        width: CGFloat
+    ) -> some View {
         let errorTint = Color(hex: "f85149").opacity(dark ? 0.12 : 0.08)
         let stripe = index % 2 == 1 ? AppTheme.sidebarHover(dark).opacity(0.18) : Color.clear
         return HStack(spacing: 0) {
-            cell("\(index + 1)", wIndex, muted: true)
+            cell("\(displayIndex)", wIndex, muted: true)
             cell(display(log.userName), wUser)
             cell(display(log.ipAddress), wIP, muted: true)
             cell(display(log.eventType), wEvent, bold: true)
