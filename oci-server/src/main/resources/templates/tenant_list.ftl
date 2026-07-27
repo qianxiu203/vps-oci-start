@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="/css/common/dropdown-menu.css">
     <link rel="stylesheet" href="/css/common/loading.css">
     <link rel="stylesheet" href="/css/common/custom-select.css">
+    <link rel="stylesheet" href="/css/common/client-pagination.css">
     <script src="/js/common/jquery.min.js"></script>
     <style>
         .layout { padding-top: 0; }
@@ -897,23 +898,22 @@
 
 <!-- 审计日志模态框 -->
 <div id="auditLogModal" class="modal-overlay">
-    <div class="modal-container" style="max-width: 900px;">
-        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="modal-container audit-log-modal">
+        <div class="modal-header audit-log-modal-header">
             <h3 class="modal-title"><i class="fas fa-clipboard-list"></i> ${msg.get("tenant.log")}</h3>
             <button class="close-btn" onclick="closeAuditLogModal()">&times;</button>
         </div>
 
-        <div class="modal-body">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                <label style="font-size: 13px; color: var(--text-secondary);">${msg.get("tenant.startTime")}：</label>
-                <input type="date" id="startDate" class="form-control" style="width: 150px;">
-                <label style="font-size: 13px; color: var(--text-secondary);">${msg.get("tenant.endTime")}：</label>
-                <input type="date" id="endDate" class="form-control" style="width: 150px;">
-                <button class="btn btn-primary" onclick="searchAuditLogsByDate()">${msg.get("openBoot.search")}</button>
+        <div class="modal-body audit-log-modal-body">
+            <div class="audit-log-filters">
+                <label>${msg.get("tenant.startTime")}：</label>
+                <input type="date" id="startDate" class="form-control">
+                <label>${msg.get("tenant.endTime")}：</label>
+                <input type="date" id="endDate" class="form-control">
+                <button class="btn btn-primary btn-sm" onclick="searchAuditLogsByDate()">${msg.get("openBoot.search")}</button>
             </div>
 
-
-            <div id="auditLogTableContainer" style="max-height: 500px; overflow-y: auto; border: 1px solid var(--card-border); border-radius: 4px;">
+            <div id="auditLogTableContainer">
                 <table id="auditLogTable" class="table table-striped" style="width: 100%;">
                     <thead>
                     <tr>
@@ -932,9 +932,8 @@
                 </table>
             </div>
 
-            <div style="text-align: center; margin-top: 10px;">
-                <button id="loadMoreLogsBtn" class="btn btn-primary" style="display:none;" onclick="loadMoreAuditLogs()">${msg.get("tenant.loadMore")}</button>
-            </div>
+            <!-- 统一分页组件（token 游标分页：上一页/页码/下一页） -->
+            <div id="auditLogPagination" class="audit-log-pagination"></div>
         </div>
     </div>
 </div>
@@ -1237,8 +1236,15 @@
         memo_btn_close: "${msg.get('memo.btn.close')?js_string}",
         login_reset_title: "${msg.get('login.reset.title')?js_string}",
         tenant_deleteUser: "${msg.get('tenant.deleteUser')?js_string}",
-        page_prev: "${msg.get('header.page.prev')?js_string}",
-        page_next: "${msg.get('header.page.next')?js_string}",
+        page_prev: "${msg.get('page.prev')?js_string}",
+        page_next: "${msg.get('page.next')?js_string}",
+        page_show: "${msg.get('page.show')?js_string}",
+        page_item: "${msg.get('page.item')?js_string}",
+        page_jump: "${msg.get('page.jump')?js_string}",
+        page_page: "${msg.get('page.page')?js_string}",
+        page_total: "${msg.get('page.total')?js_string}",
+        page_to: "${(msg.get('detail.to')!'第')?js_string}",
+        page_ele: "${(msg.get('page.ele')!'条')?js_string}",
         tenant_loadGroup: "${msg.get('tenant.loadGroup')?js_string}",
         tenant_addUserDefaultRegion: "${msg.get('tenant.addUserDefaultRegion')?js_string}",
         login_username: "${msg.get('login.username')?js_string}",
