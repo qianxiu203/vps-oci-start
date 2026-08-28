@@ -222,6 +222,34 @@ else
     echo "   可设置: export MAVEN_SETTINGS=/path/to/settings.xml"
 fi
 
+# Maven 编译 JDK：源码按 Java 8；Lombok 1.18.32 无法在 JDK 22+ 上生成 @Slf4j/@Builder
+#（会报 cannot find symbol: log / builder）。优先 11（与打包 JRE 一致），其次 8 / 17 / 21。
+resolve_maven_jdk() {
+    local v home
+    for v in 11 1.8 8 17 21; do
+        home=$(/usr/libexec/java_home -v "$v" 2>/dev/null || true)
+        if [ -n "$home" ] && [ -x "$home/bin/java" ]; then
+            printf '%s' "$home"
+            return 0
+        fi
+    done
+    return 1
+}
+
+echo ""
+echo "☕ 选择 Maven 编译 JDK …"
+if MAVEN_JAVA_HOME="$(resolve_maven_jdk)"; then
+    export JAVA_HOME="$MAVEN_JAVA_HOME"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    echo "✅ Maven JDK: $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
+    echo "   JAVA_HOME=$JAVA_HOME"
+else
+    echo "❌ 未找到 JDK 8/11/17/21。当前默认: $(java -version 2>&1 | head -1)"
+    echo "   本仓库 Lombok 1.18.32 无法在 JDK 22+ 上处理注解。"
+    echo "   安装 JDK 11 后重试，或: export JAVA_HOME=\$(/usr/libexec/java_home -v 11)"
+    exit 1
+fi
+
 # ────────────────────────── Step 1: Build JAR ────────────────────────────
 echo ""
 echo "══════════════════════════════════════════"
