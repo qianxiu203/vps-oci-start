@@ -30,6 +30,26 @@ struct VersionCheckInfo: Equatable {
     /// GitHub asset browser_download_url for the .dmg
     var dmgURL: String = ""
     var dmgFileName: String = ""
+
+    /// Strip `v-` / `v` for UI (5.7.91, not v-5.7.91).
+    var currentDisplay: String {
+        let d = Self.display(currentVersion)
+        return d.isEmpty ? "1.0.0" : d
+    }
+
+    var latestDisplay: String {
+        let d = Self.display(latestVersion)
+        return d.isEmpty ? currentDisplay : d
+    }
+
+    static func display(_ version: String) -> String {
+        var s = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty { return "" }
+        let lower = s.lowercased()
+        if lower.hasPrefix("v-") { return String(s.dropFirst(2)) }
+        if lower.hasPrefix("v") { return String(s.dropFirst()) }
+        return s
+    }
 }
 
 /// Mac client upgrade UI: download DMG → open.

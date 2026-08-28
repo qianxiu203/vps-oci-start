@@ -230,12 +230,13 @@ final class HeaderViewModel: ObservableObject {
 
     /// Confirm → download DMG to Downloads → open in Finder.
     func requestUpdate() {
+        showAbout = false
         guard version.needUpdate, !updatePhase.isActive else { return }
-        let target = version.latestVersion.isEmpty ? "新版本" : version.latestVersion
+        let target = version.latestDisplay.isEmpty ? "新版本" : version.latestDisplay
         guard AppAlert.confirm(
-            title: "发现新版本",
-            message: "将下载 Oci-Start \(target) 的 macOS 安装包（DMG）到「下载」文件夹并自动打开。\n请拖入「应用程序」后重新启动。",
-            confirmTitle: "下载升级",
+            title: "发现 Mac 新版本",
+            message: "将下载 Oci-Start \(target) 的 macOS 安装包（DMG）到「下载」文件夹并自动打开。\n请拖入「应用程序」后重新启动。\n\n只会更新 Mac 客户端，不会升级 Web / 远程服务端。",
+            confirmTitle: "下载安装包",
             cancelTitle: "稍后"
         ) else { return }
 
@@ -255,7 +256,7 @@ final class HeaderViewModel: ObservableObject {
     func executeDMGUpdate() async {
         guard version.needUpdate else { return }
         guard let remote = URL(string: version.dmgURL), !version.dmgURL.isEmpty else {
-            updatePhase = .failed("未找到 DMG 下载地址，请到 GitHub Releases 手动下载")
+            updatePhase = .failed("未找到 Mac 安装包（DMG）。请到 GitHub Releases 手动下载：\nhttps://github.com/doubleDimple/oci-start/releases")
             showUpdateProgress = true
             return
         }
@@ -310,27 +311,41 @@ final class HeaderViewModel: ObservableObject {
             let tag = (rel["tag_name"] as? String) ?? ""
             guard !tag.isEmpty else { continue }
             guard let assets = rel["assets"] as? [[String: Any]] else { continue }
-            if let dmg = Self.pickDMGAsset(assets) {
+            if let dmg = Self.pickDMGAsset(assets, tag: tag) {
                 return MacDMGRelease(tag: tag, dmgURL: dmg.url, dmgName: dmg.name)
             }
         }
         return nil
     }
 
-    private static func pickDMGAsset(_ assets: [[String: Any]]) -> (url: URL, name: String)? {
-        // Prefer names containing mac / OciStart, else first *.dmg
+    /// Prefer `OciStart-{ver}.dmg` > name containing mac/OciStart > first `*.dmg`.
+    private static func pickDMGAsset(_ assets: [[String: Any]], tag: String) -> (url: URL, name: String)? {
+        let ver = normalizeVersion(tag)
+        let exact = "ocistart-\(ver).dmg"
+        var versioned: (URL, String)?
+        var named: (URL, String)?
         var fallback: (URL, String)?
         for a in assets {
             let name = (a["name"] as? String) ?? ""
-            guard name.lowercased().hasSuffix(".dmg") else { continue }
-            guard let s = a["browser_download_url"] as? String, let u = URL(string: s) else { continue }
             let lower = name.lowercased()
-            if lower.contains("mac") || lower.contains("ocistart") || lower.contains("oci-start") {
+            guard lower.hasSuffix(".dmg") else { continue }
+            guard let s = a["browser_download_url"] as? String, let u = URL(string: s) else { continue }
+            if lower == exact {
                 return (u, name)
+            }
+            if lower.hasPrefix("ocistart-") && lower.contains(ver) {
+                if versioned == nil { versioned = (u, name) }
+                continue
+            }
+            if lower.contains("mac") || lower.contains("ocistart") || lower.contains("oci-start") {
+                if named == nil { named = (u, name) }
+                continue
             }
             if fallback == nil { fallback = (u, name) }
         }
-        return fallback.map { ($0.0, $0.1) }
+        if let versioned = versioned { return versioned }
+        if let named = named { return named }
+        return fallback
     }
 
     private func downloadDMG(
@@ -343,7 +358,7 @@ final class HeaderViewModel: ObservableObject {
         let safeName: String = {
             let n = suggestedName.trimmingCharacters(in: .whitespacesAndNewlines)
             if n.lowercased().hasSuffix(".dmg") { return n }
-            let ver = version.latestVersion.replacingOccurrences(of: "/", with: "-")
+            let ver = version.latestDisplay.replacingOccurrences(of: "/", with: "-")
             return "OciStart-\(ver).dmg"
         }()
         let dest = downloads.appendingPathComponent(safeName)
@@ -363,7 +378,7 @@ final class HeaderViewModel: ObservableObject {
         return finalDest
     }
 
-    /// Same numeric compare as server `AppVersion` (v-5.7.89 vs 1.0.0).
+    /// Same numeric compare as server `AppVersion` (v-5.7.89 vs 5.7.90).
     static func compareVersion(_ left: String, _ right: String) -> Int {
         let l = normalizeVersion(left).split(separator: ".").map { parseVersionPart(String($0)) }
         let r = normalizeVersion(right).split(separator: ".").map { parseVersionPart(String($0)) }
@@ -377,11 +392,8 @@ final class HeaderViewModel: ObservableObject {
     }
 
     private static func normalizeVersion(_ version: String) -> String {
-        var s = version.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty { return "0" }
-        if s.lowercased().hasPrefix("v-") { s = String(s.dropFirst(2)) }
-        else if s.lowercased().hasPrefix("v") { s = String(s.dropFirst()) }
-        return s
+        let s = VersionCheckInfo.display(version)
+        return s.isEmpty ? "0" : s
     }
 
     private static func parseVersionPart(_ part: String) -> Int {

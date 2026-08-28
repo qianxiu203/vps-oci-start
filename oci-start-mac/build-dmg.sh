@@ -38,14 +38,33 @@ fi
 
 mkdir -p "$BUILD_DIR" "$CACHE_DIR"
 
-# ────────────────────────── 版本号（每次打包自动 +patch） ──────────────────
-# 读 project.yml 的 MARKETING_VERSION / CURRENT_PROJECT_VERSION，写回 yml + Info.plist。
+# ────────────────────────── 版本号（跟随服务端 oci.version） ──────────────────
+# Mac 客户端与 GitHub Release tag / application.yml 的 oci.version 对齐，
+# 不再独立维护 1.0.x。构建号仍每次 +1。
 # 环境变量：
-#   SKIP_VERSION_BUMP=1   不递增，沿用当前版本
-#   VERSION=1.2.0         指定对外版本（不再自动 +patch），构建号仍 +1
-#   BUMP=patch|minor|major  默认 patch（1.0.0→1.0.1 / 1.0.0→1.1.0 / 1.0.0→2.0.0）
+#   SKIP_VERSION_BUMP=1   不改版本号，沿用 project.yml
+#   VERSION=5.7.91        指定对外版本（覆盖 yml），构建号仍 +1
 APP_MARKETING_VERSION=""
 APP_BUILD_NUMBER=""
+
+# 读 oci-server application.yml 的 oci.version（去 v- / v 前缀）
+read_oci_version() {
+    local yml="$REPO_ROOT/oci-server/src/main/resources/application.yml"
+    if [ ! -f "$yml" ]; then
+        return 0
+    fi
+    awk '
+        /^oci:[[:space:]]*$/ { in_oci=1; next }
+        in_oci && /^[^[:space:]#]/ { in_oci=0 }
+        in_oci && /^[[:space:]]*version:[[:space:]]*/ {
+            sub(/^[[:space:]]*version:[[:space:]]*/, "")
+            gsub(/["\047]/, "")
+            gsub(/[[:space:]]/, "")
+            print
+            exit
+        }
+    ' "$yml" | sed -E 's/^v-//;s/^v//'
+}
 
 bump_app_version() {
     local yml="$MAC_DIR/project.yml"
@@ -70,25 +89,21 @@ bump_app_version() {
         echo "ℹ️  SKIP_VERSION_BUMP=1，保持版本 $marketing ($build)"
     elif [ -n "${VERSION:-}" ]; then
         marketing="$VERSION"
+        marketing="${marketing#v-}"
+        marketing="${marketing#v}"
         build=$((build + 1))
         echo "📌 指定版本 VERSION=$marketing，构建号 $old_build → $build"
     else
-        local maj min pat
-        maj=$(echo "$marketing" | cut -d. -f1)
-        min=$(echo "$marketing" | cut -d. -f2)
-        pat=$(echo "$marketing" | cut -d. -f3)
-        maj=${maj:-0}; min=${min:-0}; pat=${pat:-0}
-        [[ "$maj" =~ ^[0-9]+$ ]] || maj=0
-        [[ "$min" =~ ^[0-9]+$ ]] || min=0
-        [[ "$pat" =~ ^[0-9]+$ ]] || pat=0
-        case "${BUMP:-patch}" in
-            major) maj=$((maj + 1)); min=0; pat=0 ;;
-            minor) min=$((min + 1)); pat=0 ;;
-            patch|*) pat=$((pat + 1)) ;;
-        esac
-        marketing="${maj}.${min}.${pat}"
-        build=$((build + 1))
-        echo "📈 版本自动递增: $old_marketing ($old_build) → $marketing ($build)  [BUMP=${BUMP:-patch}]"
+        local oci_ver
+        oci_ver="$(read_oci_version || true)"
+        if [ -n "$oci_ver" ]; then
+            marketing="$oci_ver"
+            build=$((build + 1))
+            echo "📈 跟随 oci.version: $old_marketing ($old_build) → $marketing ($build)"
+        else
+            build=$((build + 1))
+            echo "⚠️  未读到 oci.version，保持 MARKETING_VERSION=$marketing，构建号 $old_build → $build"
+        fi
     fi
 
     # project.yml：settings + info.properties
@@ -683,8 +698,7 @@ echo "📦 环境变量:"
 echo "   SKIP_JLINK=1        跳过 jlink，仅删 man/demo/src"
 echo "   HOST_ARCH_ONLY=1    仅打包本机 CPU 架构的 JRE"
 echo "   SKIP_VERSION_BUMP=1 本次不改版本号"
-echo "   VERSION=1.2.0       指定对外版本（构建号仍 +1）"
-echo "   BUMP=patch|minor|major  默认 patch（1.0.0→1.0.1）"
+echo "   VERSION=5.7.91      指定对外版本（默认跟随 oci.version，构建号仍 +1）"
 echo ""
 echo "🔏 可选：Developer ID + 公证后，对方可直接双击（需付费开发者账号）"
 echo "   详见 oci-start-mac/README.md「签名与公证」"

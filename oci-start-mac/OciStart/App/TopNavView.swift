@@ -138,7 +138,7 @@ struct TopNavView: View {
                 Image(systemName: header.updatePhase.isActive ? "arrow.triangle.2.circlepath" : "arrow.up.circle.fill")
                 Text(header.updatePhase.isActive
                      ? "升级中…"
-                     : "发现新版本 (\(header.version.latestVersion))")
+                     : "发现 Mac 新版本 (\(header.version.latestDisplay))")
                     .font(.system(size: 12, weight: .bold))
             }
             .foregroundColor(dark ? Color.white : Color(hex: "dc2626"))
@@ -154,7 +154,7 @@ struct TopNavView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(header.updatePhase.isActive)
-        .help("下载新版 macOS 安装包（DMG）")
+        .help("下载 macOS 安装包（DMG），替换应用程序后重启")
     }
 
     private var languageButton: some View {
@@ -506,7 +506,7 @@ private struct AssetAnalysisSheet: View {
     }
 }
 
-// MARK: - About（对齐 Web `version_info.ftl`）
+// MARK: - About（Mac 客户端版本，不走 Web jar 更新）
 
 private struct AboutSheet: View {
     @ObservedObject var header: HeaderViewModel
@@ -523,12 +523,11 @@ private struct AboutSheet: View {
     private let releasesURL = "https://github.com/doubleDimple/oci-start/releases"
 
     private var currentVersion: String {
-        header.version.currentVersion.isEmpty ? "v1.0.0" : header.version.currentVersion
+        header.version.currentDisplay
     }
 
     private var latestVersion: String {
-        let lat = header.version.latestVersion
-        return lat.isEmpty ? currentVersion : lat
+        header.version.latestDisplay
     }
 
     private var surface: Color { dark ? Color(hex: "1e2430") : Color.white }
@@ -586,7 +585,7 @@ private struct AboutSheet: View {
                     .help("点击关闭预览")
             }
         }
-        .frame(width: 720, height: 460)
+        .frame(width: 720, height: 510)
         .background(surface)
         .onAppear {
             Task { await header.checkVersion() }
@@ -628,24 +627,44 @@ private struct AboutSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 0) {
-                versionItem(label: "Current", value: currentVersion, showTag: true)
-                Rectangle()
-                    .fill(dark ? Color(hex: "2e3a4e") : Color(hex: "e2e8f0"))
-                    .frame(width: 1, height: 36)
-                    .padding(.horizontal, 18)
-                versionItem(label: "Latest", value: latestVersion, showTag: false)
+            VStack(alignment: .trailing, spacing: 10) {
+                HStack(spacing: 0) {
+                    versionItem(label: "当前 Mac", value: currentVersion, showTag: true)
+                    Rectangle()
+                        .fill(dark ? Color(hex: "2e3a4e") : Color(hex: "e2e8f0"))
+                        .frame(width: 1, height: 36)
+                        .padding(.horizontal, 18)
+                    versionItem(label: "最新 Mac", value: latestVersion, showTag: false)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(surface2)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(border, lineWidth: 1)
+                        )
+                )
+
+                if header.version.needUpdate {
+                    Button(action: { header.requestUpdate() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("下载 Mac 安装包")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: "dc2626")))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(header.updatePhase.isActive)
+                    .help("下载 macOS 安装包（DMG），替换应用程序后重启")
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(surface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(border, lineWidth: 1)
-                    )
-            )
         }
         .padding(.horizontal, 36)
         .padding(.top, 36)
@@ -654,7 +673,7 @@ private struct AboutSheet: View {
 
     private func versionItem(label: String, value: String, showTag: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
+            Text(label)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(textMuted)
             HStack(spacing: 6) {
@@ -662,7 +681,7 @@ private struct AboutSheet: View {
                     .font(.system(size: 15, weight: .heavy, design: .monospaced))
                     .foregroundColor(textPrimary)
                 if showTag {
-                    Text(header.version.needUpdate ? "UPDATE" : "LATEST")
+                    Text(header.version.needUpdate ? "可更新" : "最新")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(header.version.needUpdate
                             ? (dark ? Color(hex: "fbbf24") : Color(hex: "854d0e"))
@@ -906,11 +925,11 @@ private struct VersionUpdateProgressSheet: View {
 
     private var title: String {
         switch header.updatePhase {
-        case .downloading: return "正在下载安装包"
+        case .downloading: return "正在下载 Mac 安装包"
         case .opening: return "正在打开 DMG"
-        case .completed: return "下载完成"
-        case .failed: return "升级失败"
-        case .idle: return "升级"
+        case .completed: return "安装包已就绪"
+        case .failed: return "下载失败"
+        case .idle: return "Mac 升级"
         }
     }
 
@@ -918,11 +937,11 @@ private struct VersionUpdateProgressSheet: View {
         switch header.updatePhase {
         case .downloading(let p):
             let pct = Int((p * 100).rounded())
-            return "从 GitHub 下载 OciStart.dmg… \(pct)%"
+            return "正在从 GitHub 下载 Mac 安装包（DMG）… \(pct)%"
         case .opening:
             return "即将在 Finder 中打开安装镜像…"
         case .completed(let path):
-            return "已保存到：\n\(path)\n\n请将 OciStart 拖入「应用程序」，然后重新打开。"
+            return "已保存到：\n\(path)\n\n请将 OciStart 拖入「应用程序」，然后重新打开。这不会改动 Web / 远程服务端。"
         case .failed(let msg):
             return msg
         case .idle:
