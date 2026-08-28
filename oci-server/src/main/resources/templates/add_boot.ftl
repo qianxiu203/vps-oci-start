@@ -22,7 +22,7 @@
 
     <link rel="stylesheet" href="/css/all.min.css">
     <link rel="stylesheet" href="/css/common/fa-fix.css">
-    <link rel="stylesheet" href="/css/app/add_boot.css">
+    <link rel="stylesheet" href="/css/app/add_boot.css?v=20260828">
     <link rel="stylesheet" href="/css/common/loading.css">
     <link rel="stylesheet" href="/css/common/custom-select.css">
 
@@ -37,6 +37,13 @@
 
     <!-- Main Content -->
     <main class="main-content">
+        <div class="api-risk-banner" role="alert">
+            <i class="fas fa-exclamation-triangle"></i>
+            <div>
+                <strong>${msg.get("ins.apiRiskTitle")}</strong>
+                <span>${msg.get("ins.apiRiskBanner")}</span>
+            </div>
+        </div>
         <div class="form-card">
             <div class="form-header">
                 <h1 class="form-title">${msg.get("ins.preOpen")}</h1>
@@ -257,6 +264,10 @@
         ins_plzEffectTime: "${msg.get('ins.plzEffectTime')?js_string}",
         ins_plzOs: "${msg.get('ins.plzOs')?js_string}",
         ins_plzVersion: "${msg.get('ins.plzVersion')?js_string}",
+        ins_apiRiskTitle: "${msg.get('ins.apiRiskTitle')?js_string}",
+        ins_apiRiskBanner: "${msg.get('ins.apiRiskBanner')?js_string}",
+        ins_apiRiskDialog: "${msg.get('ins.apiRiskDialog')?js_string}",
+        ins_apiRiskConfirm: "${msg.get('ins.apiRiskConfirm')?js_string}",
         vpn_edit: "${msg.get('vpn.edit')?js_string}"
 
     }
@@ -264,6 +275,6 @@
 <script src="/js/common/request.js"></script>
 <script src="/js/common/loading.js"></script>
 <script src="/js/common/custom-select.js"></script>
-<script src="/js/system/add_boot.js"></script>
+<script src="/js/system/add_boot.js?v=20260828"></script>
 </body>
 </html>

@@ -273,6 +273,13 @@ function closeQuickBoot(e) {
 async function mobQuickBoot(arch) {
     if (!_quickBootTenantId) return;
 
+    var i18n = window.MOB_I18N || {};
+    var ok = await mobConfirm(
+        i18n.apiRiskTitle || 'API Launch Risk Warning',
+        i18n.apiRiskDialog || 'Oracle has tightened risk control for API-based instance creation. Creating instances via API is very likely to trigger risk control and may restrict the account.'
+    );
+    if (!ok) return;
+
     document.getElementById('quickBootOverlay').style.display = 'none';
     document.body.style.overflow = '';
     mobShowLoading('正在创建 ' + arch + ' 开机任务...');

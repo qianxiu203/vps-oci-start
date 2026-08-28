@@ -1525,6 +1525,7 @@ final class TenantsViewModel: ObservableObject {
             ToastCenter.shared.error("请选择系统镜像")
             return
         }
+        guard AppAlert.confirmOracleApiBootRisk() else { return }
         let tid = bootSelectedRegionTenantId.isEmpty ? "\(item.id)" : bootSelectedRegionTenantId
         let fields: [String: String] = [
             "tenantId": tid,

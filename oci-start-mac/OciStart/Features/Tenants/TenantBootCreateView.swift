@@ -61,6 +61,8 @@ struct TenantBootCreateView: View {
             content: {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        apiRiskBanner
+
                         // 上排：架构区域 | 规格模板（等宽等高）
                         EqualHeightCardRow(minHeight: topMinHeight) {
                             archCard
@@ -83,6 +85,34 @@ struct TenantBootCreateView: View {
         )
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .environmentObject(appearance)
+    }
+
+    private var apiRiskBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Color(hex: "f85149"))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("API 开机风控警告")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(hex: "f85149"))
+                Text("Oracle 已加强对 API 开机的风控。通过 API 创建实例极大概率触发风控，可能导致账号受限。保存任务前会再次弹框确认。")
+                    .font(.system(size: 12))
+                    .foregroundColor(dark ? Color.white.opacity(0.85) : Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(hex: "f85149").opacity(dark ? 0.14 : 0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "f85149").opacity(0.45), lineWidth: 1)
+        )
     }
 
     // MARK: - Toolbar

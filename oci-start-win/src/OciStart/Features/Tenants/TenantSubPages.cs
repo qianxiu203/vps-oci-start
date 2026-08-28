@@ -689,8 +689,26 @@ public sealed class TenantBootCreatePage : UserControl
         _osBox.SelectionChanged += (_, _) => ApplyOs();
         _verBox.SelectionChanged += (_, _) => ApplyVersion();
 
+        var riskBanner = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x22, 0xDC, 0x26, 0x26)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12, 10, 12, 10),
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = new TextBlock
+            {
+                Text = "API 开机风控警告：Oracle 已加强对 API 开机的风控。通过 API 创建实例极大概率触发风控，可能导致账号受限。点击「创建任务」后会再次弹框确认。",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26)),
+                FontSize = 12
+            }
+        };
+
         var row1 = new EqualHeightCardRow(archCard, cfgCard, minHeight: 280);
         var stack = new StackPanel { Margin = new Thickness(16) };
+        stack.Children.Add(riskBanner);
         stack.Children.Add(row1);
         stack.Children.Add(imgCard);
         var scroll = new ScrollViewer
@@ -799,6 +817,13 @@ public sealed class TenantBootCreatePage : UserControl
             ToastService.Error("请选择系统镜像");
             return;
         }
+        var risk = MessageBox.Show(
+            "Oracle 已加强对 API 开机的风控。通过 API 创建实例极大概率触发风控，可能导致账号受限。",
+            "API 开机风控警告",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (risk != MessageBoxResult.OK) return;
         var fields = new Dictionary<string, string>
         {
             ["tenantId"] = SelectedTenantId().ToString(),

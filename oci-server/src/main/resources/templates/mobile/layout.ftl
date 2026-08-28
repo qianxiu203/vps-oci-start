@@ -939,6 +939,8 @@ window.MOB_I18N = {
     bootToday:         "${msg.get('mob.boot.today')}",
     bootTimes:         "${msg.get('mob.boot.times')}",
     bootTaskPrefix:    "${msg.get('mob.boot.task.prefix')}",
+    apiRiskTitle:      "${msg.get('ins.apiRiskTitle')?js_string}",
+    apiRiskDialog:     "${msg.get('ins.apiRiskDialog')?js_string}",
     // arm regions
     armEmpty:          "${msg.get('mob.arm.empty')}",
     armLoadFail:       "${msg.get('mob.arm.load.fail')}",

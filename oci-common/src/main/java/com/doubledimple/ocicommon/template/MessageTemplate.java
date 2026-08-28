@@ -10,7 +10,8 @@ public class MessageTemplate {
 
 
     public static final String COMMON_LINKS ="Github: [Oci-Start](https://github.com/doubleDimple/oci-start)\n" +
-            "频道: [OCI_NOTIFY](https://t.me/OCI_NOTIFY)";
+            "频道: [OCI_NOTIFY](https://t.me/OCI_NOTIFY)\n" +
+            "交流群: [点击加入](https://t.me/+M7XhteVCMMU5ZDhh)";
     /**
      * 开机成功提醒模板
      */

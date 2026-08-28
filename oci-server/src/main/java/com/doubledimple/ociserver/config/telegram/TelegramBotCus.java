@@ -80,6 +80,9 @@ public class TelegramBotCus extends TelegramLongPollingBot implements Initializi
     private static final String BTN_REFRESH = "🔄 刷新";
     private static final String BTN_BACK = "↩️ 返回";
 
+    private static final String URL_GITHUB = "https://github.com/doubleDimple/oci-start";
+    private static final String URL_COMMUNITY = "https://t.me/+M7XhteVCMMU5ZDhh";
+
     private static final int PAGE_SIZE_TENANT = 10;
     private static final int PAGE_SIZE_BOOT_LOG = 5;
     private static final int QUOTA_TG_PAGE_SIZE = 5;
@@ -831,11 +834,11 @@ public class TelegramBotCus extends TelegramLongPollingBot implements Initializi
         // 第四行：使用帮助
         keyboard.add(Collections.singletonList(button("💡 使用帮助", "help")));
 
-        // 第四行：GitHub
-        InlineKeyboardButton githubBtn = new InlineKeyboardButton();
-        githubBtn.setText("⭐ GitHub 项目主页");
-        githubBtn.setUrl("https://github.com/doubleDimple/oci-start");
-        keyboard.add(Collections.singletonList(githubBtn));
+        // 第五行：外链（点按即打开）
+        keyboard.add(row(
+                urlButton("⭐ GitHub", URL_GITHUB),
+                urlButton("💬 交流群", URL_COMMUNITY)
+        ));
 
         markup.setKeyboard(keyboard);
 
@@ -1187,9 +1190,12 @@ public class TelegramBotCus extends TelegramLongPollingBot implements Initializi
                 "▪️ 直接发送消息 — 与 AI 助手对话 🤖\n" +
                 DIVIDER_THIN + "\n" +
                 "⭐ <b>项目地址</b>\n" +
-                "<a href=\"https://github.com/doubleDimple/oci-start\">github.com/doubleDimple/oci-start</a>";
+                "<a href=\"" + URL_GITHUB + "\">github.com/doubleDimple/oci-start</a>\n" +
+                DIVIDER_THIN + "\n" +
+                "💬 <b>交流群</b>\n" +
+                "<a href=\"" + URL_COMMUNITY + "\">点击加入 OCI-START 交流群</a>";
 
-        sendOrEdit(chatId, messageId, helpText, onlyBackToMainMarkup());
+        sendOrEdit(chatId, messageId, helpText, helpMarkup());
     }
 
     // ============== 本月流量功能 ==============
@@ -1724,6 +1730,19 @@ public class TelegramBotCus extends TelegramLongPollingBot implements Initializi
         return markup;
     }
 
+    /** 帮助页：外链 + 返回主菜单 */
+    private InlineKeyboardMarkup helpMarkup() {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> kb = new ArrayList<>();
+        kb.add(row(
+                urlButton("⭐ GitHub", URL_GITHUB),
+                urlButton("💬 加入交流群", URL_COMMUNITY)
+        ));
+        kb.add(Collections.singletonList(button(BTN_BACK_MAIN, "back_to_main")));
+        markup.setKeyboard(kb);
+        return markup;
+    }
+
     private InlineKeyboardMarkup backToTenantListMarkup() {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> kb = new ArrayList<>();
@@ -1739,6 +1758,13 @@ public class TelegramBotCus extends TelegramLongPollingBot implements Initializi
         InlineKeyboardButton b = new InlineKeyboardButton();
         b.setText(text);
         b.setCallbackData(callback);
+        return b;
+    }
+
+    private InlineKeyboardButton urlButton(String text, String url) {
+        InlineKeyboardButton b = new InlineKeyboardButton();
+        b.setText(text);
+        b.setUrl(url);
         return b;
     }
 

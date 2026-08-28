@@ -449,6 +449,7 @@ final class BootViewModel: ObservableObject {
             formError = "请填写 Root 密码"
             return
         }
+        guard AppAlert.confirmOracleApiBootRisk() else { return }
         let fields: [String: String] = [
             "tenantId": "\(createTenantId)",
             "ocpu": createOcpu,

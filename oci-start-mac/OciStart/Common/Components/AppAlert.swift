@@ -29,6 +29,17 @@ enum AppAlert {
         alert.runModal()
     }
 
+    /// Oracle API 开机风控确认：取消为默认按钮，确认后才允许提交。
+    static func confirmOracleApiBootRisk() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "API 开机风控警告"
+        alert.informativeText = "Oracle 已加强对 API 开机的风控。通过 API 创建实例极大概率触发风控，可能导致账号受限。"
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "已知晓风险，继续创建")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
     static func error(title: String = "错误", message: String) {
         let alert = NSAlert()
         alert.messageText = title

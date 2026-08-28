@@ -87,6 +87,49 @@ body {
     letter-spacing: -.3px;
 }
 
+.api-risk-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 0 0 16px;
+    padding: 16px 18px;
+    background: #4a1c1c;
+    border: 1px solid #ff6b6b;
+    border-radius: var(--radius);
+    box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.15);
+}
+[data-theme="light"] .api-risk-banner {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+.api-risk-banner i {
+    margin-top: 2px;
+    font-size: 18px;
+    color: #ff6b6b;
+    flex-shrink: 0;
+}
+[data-theme="light"] .api-risk-banner i {
+    color: #dc2626;
+}
+.api-risk-banner strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #ff8a8a;
+}
+[data-theme="light"] .api-risk-banner strong {
+    color: #b91c1c;
+}
+.api-risk-banner span {
+    font-size: 13px;
+    line-height: 1.65;
+    color: #f0d0d0;
+}
+[data-theme="light"] .api-risk-banner span {
+    color: #7f1d1d;
+}
+
 /* ── 模式切换 Tabs ── */
 .mode-tabs {
     display: inline-flex;

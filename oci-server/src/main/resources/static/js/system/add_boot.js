@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     csrfToken = document.querySelector('meta[name="_csrf"]').content;
     csrfHeaderName = document.querySelector('meta[name="_csrf_header"]').content;
 
+    ensureApiRiskBanner();
     initRegionSelection();
     initModeSwitch();
     initTemplateSelection();
@@ -13,6 +14,24 @@ document.addEventListener('DOMContentLoaded', function() {
     initFormValidation();
     generateAndSetPassword();
 });
+
+function ensureApiRiskBanner() {
+    if (document.querySelector('.api-risk-banner')) return;
+    const main = document.querySelector('.main-content');
+    if (!main) return;
+    const title = (i18n && i18n.ins_apiRiskTitle) || 'API 开机风控警告';
+    const body = (i18n && i18n.ins_apiRiskBanner) ||
+        'Oracle 已加强对 API 开机的风控。通过 API 创建实例极大概率触发风控，可能导致账号受限。';
+    const banner = document.createElement('div');
+    banner.className = 'api-risk-banner';
+    banner.setAttribute('role', 'alert');
+    banner.innerHTML =
+        '<i class="fas fa-exclamation-triangle"></i>' +
+        '<div><strong></strong><span></span></div>';
+    banner.querySelector('strong').textContent = title;
+    banner.querySelector('span').textContent = body;
+    main.insertBefore(banner, main.firstChild);
+}
 
 // 模式切换
 function initModeSwitch() {
@@ -146,7 +165,7 @@ function generateAndSetPassword() {
 // 表单验证与提交
 function initFormValidation() {
     const form = document.getElementById('bootForm');
-    form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         // 自定义模式下需校验配置是否选全
@@ -167,6 +186,22 @@ function initFormValidation() {
             }
         }
 
+        const risk = await Swal.fire({
+            icon: 'warning',
+            title: i18n.ins_apiRiskTitle,
+            text: i18n.ins_apiRiskDialog,
+            width: '34em',
+            showCancelButton: true,
+            focusCancel: true,
+            allowOutsideClick: false,
+            reverseButtons: true,
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: i18n.ins_apiRiskConfirm,
+            cancelButtonText: i18n.common_cancel
+        });
+        if (!risk.isConfirmed) return;
+
         generateAndSetPassword();
         const submitBtn = document.getElementById('submit-btn');
         submitBtn.disabled = true;
@@ -186,6 +221,8 @@ function initFormValidation() {
                     window.location.href = `/tenants/bootList?tenantId=${document.querySelector('input[name="tenantId"]').value}`;
                 } else {
                     Swal.fire({ title: 'error', text: data.message, icon: 'error', confirmButtonColor: '#ff6b6b' });
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-plus"></i> '+i18n.common_saving;
                 }
             })
             .catch(err => {
