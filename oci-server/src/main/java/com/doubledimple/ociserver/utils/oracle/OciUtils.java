@@ -23,6 +23,10 @@ import com.oracle.bmc.core.model.AttachBootVolumeDetails;
 import com.oracle.bmc.core.model.AttachParavirtualizedVolumeDetails;
 import com.oracle.bmc.core.model.BootVolume;
 import com.oracle.bmc.core.model.BootVolumeAttachment;
+import com.oracle.bmc.core.model.CapacityReportInstanceShapeConfig;
+import com.oracle.bmc.core.model.CapacityReportShapeAvailability;
+import com.oracle.bmc.core.model.CreateCapacityReportShapeAvailabilityDetails;
+import com.oracle.bmc.core.model.CreateComputeCapacityReportDetails;
 import com.oracle.bmc.core.model.BootVolumeSourceFromBootVolumeDetails;
 import com.oracle.bmc.core.model.CreateBootVolumeDetails;
 import com.oracle.bmc.core.model.CreateInternetGatewayDetails;
@@ -55,6 +59,7 @@ import com.oracle.bmc.core.requests.AddIpv6SubnetCidrRequest;
 import com.oracle.bmc.core.requests.AttachBootVolumeRequest;
 import com.oracle.bmc.core.requests.AttachVolumeRequest;
 import com.oracle.bmc.core.requests.CreateBootVolumeRequest;
+import com.oracle.bmc.core.requests.CreateComputeCapacityReportRequest;
 import com.oracle.bmc.core.requests.CreateInternetGatewayRequest;
 import com.oracle.bmc.core.requests.CreateSubnetRequest;
 import com.oracle.bmc.core.requests.DeleteBootVolumeRequest;
@@ -83,6 +88,7 @@ import com.oracle.bmc.core.requests.UpdateInternetGatewayRequest;
 import com.oracle.bmc.core.requests.UpdateRouteTableRequest;
 import com.oracle.bmc.core.requests.UpdateSecurityListRequest;
 import com.oracle.bmc.core.responses.AttachBootVolumeResponse;
+import com.oracle.bmc.core.responses.CreateComputeCapacityReportResponse;
 import com.oracle.bmc.core.responses.CreateInternetGatewayResponse;
 import com.oracle.bmc.core.responses.CreateSubnetResponse;
 import com.oracle.bmc.core.responses.GetBootVolumeResponse;
@@ -121,6 +127,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1966,6 +1973,78 @@ public class OciUtils {
         } else {
             return true;
         }
+    }
+
+    /**
+     * 查询 AD 内指定 shape 当前是否有 host 容量。
+     * Flex 带任务的 ocpus/memory；AMD 免费机 E2.1.Micro 固定 1OCPU/1G。
+     * 查询失败时返回 true（fail-open，避免漏抢）。
+     */
+    public static boolean hasComputeCapacity(ComputeClient computeClient,
+                                             String compartmentId,
+                                             String availabilityDomain,
+                                             String shape,
+                                             Float ocpus,
+                                             Float memoryInGBs) {
+        if (computeClient == null || StringUtils.isBlank(compartmentId)
+                || StringUtils.isBlank(availabilityDomain) || StringUtils.isBlank(shape)) {
+            return true;
+        }
+        try {
+            CreateCapacityReportShapeAvailabilityDetails.Builder shapeBuilder =
+                    CreateCapacityReportShapeAvailabilityDetails.builder()
+                            .instanceShape(shape);
+            CapacityReportInstanceShapeConfig shapeConfig = buildCapacityShapeConfig(shape, ocpus, memoryInGBs);
+            if (shapeConfig != null) {
+                shapeBuilder.instanceShapeConfig(shapeConfig);
+            }
+            CreateComputeCapacityReportResponse response = computeClient.createComputeCapacityReport(
+                    CreateComputeCapacityReportRequest.builder()
+                            .createComputeCapacityReportDetails(
+                                    CreateComputeCapacityReportDetails.builder()
+                                            .compartmentId(compartmentId)
+                                            .availabilityDomain(availabilityDomain)
+                                            .shapeAvailabilities(Collections.singletonList(shapeBuilder.build()))
+                                            .build())
+                            .build());
+            if (response == null || response.getComputeCapacityReport() == null
+                    || CollectionUtils.isEmpty(response.getComputeCapacityReport().getShapeAvailabilities())) {
+                return false;
+            }
+            for (CapacityReportShapeAvailability item : response.getComputeCapacityReport().getShapeAvailabilities()) {
+                CapacityReportShapeAvailability.AvailabilityStatus status = item.getAvailabilityStatus();
+                if (status == CapacityReportShapeAvailability.AvailabilityStatus.Available
+                        || status == CapacityReportShapeAvailability.AvailabilityStatus.UnknownEnumValue) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.debug("容量报告查询失败，放行去创建. AD:{} shape:{} reason:{}",
+                    availabilityDomain, shape, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * Flex：用任务规格；AMD 免费 Micro：固定 1/1（新加坡等区域同样靠这个判断有没有坑）。
+     */
+    private static CapacityReportInstanceShapeConfig buildCapacityShapeConfig(String shape,
+                                                                              Float ocpus,
+                                                                              Float memoryInGBs) {
+        if (shape.contains("E2.1.Micro")) {
+            return CapacityReportInstanceShapeConfig.builder()
+                    .ocpus(1F)
+                    .memoryInGBs(1F)
+                    .build();
+        }
+        if (shape.contains("Flex") && ocpus != null && memoryInGBs != null) {
+            return CapacityReportInstanceShapeConfig.builder()
+                    .ocpus(ocpus)
+                    .memoryInGBs(memoryInGBs)
+                    .build();
+        }
+        return null;
     }
 
 

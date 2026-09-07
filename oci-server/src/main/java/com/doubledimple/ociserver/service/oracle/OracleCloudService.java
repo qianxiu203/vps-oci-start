@@ -63,6 +63,7 @@ import static com.doubledimple.ociserver.utils.oracle.OciCliUtils.createVcn;
 import static com.doubledimple.ociserver.utils.oracle.OciCliUtils.createVcnAndFlowLogs;
 import static com.doubledimple.ociserver.utils.oracle.OciUtils.checkShapes;
 import static com.doubledimple.ociserver.utils.oracle.OciUtils.getProvider;
+import static com.doubledimple.ociserver.utils.oracle.OciUtils.hasComputeCapacity;
 
 /**
  * @author doubleDimple
@@ -194,6 +195,7 @@ public class OracleCloudService {
             Instance instance = null;
             //Instance instanceFromBootVolume = null;
             BootVolume bootVolume = null;
+            boolean skippedDueToNoCapacity = false;
 
             for (AvailabilityDomain availablityDomain : availabilityDomains) {
                 if (instanceCreated){
@@ -208,6 +210,13 @@ public class OracleCloudService {
                     }
                     size --;
                     for (Shape shape : shapes) {
+                        if (!hasComputeCapacity(computeClient, compartmentId, availablityDomain.getName(),
+                                shape.getShape(), user.getOcpus(), user.getMemory())) {
+                            skippedDueToNoCapacity = true;
+                            log.debug("[TaskId={}] 用户:[{}] AD:{} shape:{} 无可用容量",
+                                    user.getBootId(), user.getUserName(), availablityDomain.getName(), shape.getShape());
+                            continue;
+                        }
                         Shape.BillingType billingType = shape.getBillingType();
                         Image image = getImage(computeClient, compartmentId, shape, user);
                         if (image == null){
@@ -256,6 +265,11 @@ public class OracleCloudService {
                     return ociLogBuilder.buildOpenBootException(count,availablityDomain.getName(),size,user,instanceCreated,e,oracleInstanceDetail);
                 }
             }
+            if (!instanceCreated && skippedDueToNoCapacity) {
+                log.info("[TaskId={}] 用户:[{}]的区域:[{}]的架构:[{}]未完成开机,已执行抢机次数为:[{}],原因为:{},将在:[{}]秒后重试...",
+                        user.getBootId(), user.getUserName(), user.getRegion(), user.getArchitecture(),
+                        count, CAPACITY.getMessage(), user.getInterval());
+            }
         }
         return oracleInstanceDetail;
     }
@@ -284,10 +298,27 @@ public class OracleCloudService {
                      .configuration(ClientConfiguration.builder().build())
                      .build(provider)){
              size = dbInstanceDetails.size();
+             computeClient.setRegion(user.getRegion());
+             workRequestClient.setRegion(user.getRegion());
+             virtualNetworkClient.setRegion(user.getRegion());
              ComputeWaiters computeWaiters = computeClient.newWaiters(workRequestClient);
+             boolean skippedDueToNoCapacity = false;
              for (LaunchInstanceDetails launchInstanceDetails : dbInstanceDetails) {
                  size --;
                  availabilityDomain = launchInstanceDetails.getAvailabilityDomain();
+                 String compartmentId = StringUtils.defaultIfBlank(
+                         ociComputerDto.getCompartmentIdRoot(), launchInstanceDetails.getCompartmentId());
+                 Float ocpus = launchInstanceDetails.getShapeConfig() != null
+                         ? launchInstanceDetails.getShapeConfig().getOcpus() : user.getOcpus();
+                 Float memory = launchInstanceDetails.getShapeConfig() != null
+                         ? launchInstanceDetails.getShapeConfig().getMemoryInGBs() : user.getMemory();
+                 if (!hasComputeCapacity(computeClient, compartmentId, availabilityDomain,
+                         launchInstanceDetails.getShape(), ocpus, memory)) {
+                     skippedDueToNoCapacity = true;
+                     log.debug("[TaskId={}] 用户:[{}] AD:{} shape:{} 无容量，跳过创建",
+                             user.getBootId(), user.getUserName(), availabilityDomain, launchInstanceDetails.getShape());
+                     continue;
+                 }
                  Instance instance = null;
                  try {
                      instance = createInstance(computeClient,user,computeWaiters, launchInstanceDetails);
@@ -297,6 +328,11 @@ public class OracleCloudService {
                  }
                  instanceCreated = true;
                  printInstance(user,computeClient, virtualNetworkClient, instance, oracleInstanceDetail,billingType,provider);
+             }
+             if (!instanceCreated && skippedDueToNoCapacity) {
+                 log.info("[TaskId={}] 用户:[{}]的区域:[{}]的架构:[{}]未完成开机,已执行抢机次数为:[{}],原因为:{},将在:[{}]秒后重试...",
+                         user.getBootId(), user.getUserName(), user.getRegion(), user.getArchitecture(),
+                         count, CAPACITY.getMessage(), user.getInterval());
              }
          }catch (Exception e){
              ociLogBuilder.buildOpenBootException(count,availabilityDomain,size,user,instanceCreated,e,oracleInstanceDetail);

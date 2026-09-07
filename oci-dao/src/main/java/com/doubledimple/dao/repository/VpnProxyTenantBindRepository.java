@@ -22,15 +22,15 @@ public interface VpnProxyTenantBindRepository extends JpaRepository<VpnProxyTena
 
     List<VpnProxyTenantBind> findByTenantIdIn(Collection<Long> tenantIds);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Transactional
     void deleteByProxyId(Long proxyId);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Transactional
     void deleteByTenantId(Long tenantId);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Transactional
     @Query("DELETE FROM VpnProxyTenantBind b WHERE b.tenantId IN :tenantIds AND b.proxyId <> :excludeProxyId")
     int deleteByTenantIdInAndProxyIdNot(@Param("tenantIds") Collection<Long> tenantIds,

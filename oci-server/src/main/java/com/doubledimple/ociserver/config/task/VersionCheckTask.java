@@ -92,7 +92,7 @@ public class VersionCheckTask {
     }
 
     /**
-     * 定时检查最新版本
+     * 检查最新版本（由首页 AJAX / Telegram 升级菜单触发，不走登录、不定时）
      */
     public void checkVersion() {
         if (log.isDebugEnabled()){
@@ -181,7 +181,6 @@ public class VersionCheckTask {
      */
     private String getLatestVersionFromDockerHub() {
         try {
-            RestTemplate restTemplate = new RestTemplate();
             ResponseEntity<Map> response = restTemplate.getForEntity(DOCKER_HUB_API_URL, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {

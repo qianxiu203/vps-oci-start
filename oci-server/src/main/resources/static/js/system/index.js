@@ -157,8 +157,8 @@ function loadDashboardData() {
             document.getElementById('github-stars').textContent = '获取失败';
         });
 
-    // 获取版本信息
-    fetch('/api/version/check', {
+    // 进入首页后远程检查一次最新版本（不阻塞登录）
+    fetch('/api/version/check?refresh=true', {
         method: 'GET',
         headers: headers
     })
@@ -192,6 +192,17 @@ function loadDashboardData() {
                 statusElement.textContent = i18n.index_already_newVersion;
                 statusElement.style.color = 'var(--success-color)';
                 versionBadge.innerHTML = '<i class="fas fa-check-circle"></i>'+i18n.index_newVersion;
+            }
+
+            const updateBtn = document.getElementById('updateBtn');
+            const numSpan = document.getElementById('newVersionNumber');
+            if (updateBtn && numSpan) {
+                if (data.needUpdate) {
+                    updateBtn.style.display = 'flex';
+                    numSpan.textContent = data.latestVersion || '';
+                } else {
+                    updateBtn.style.display = 'none';
+                }
             }
         })
         .catch(error => {

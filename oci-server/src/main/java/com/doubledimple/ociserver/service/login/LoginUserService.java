@@ -6,7 +6,6 @@ import cn.hutool.json.JSONUtil;
 import com.doubledimple.dao.entity.LoginUser;
 import com.doubledimple.dao.repository.LoginUserRepository;
 import com.doubledimple.ocicommon.enums.LoginTypeEnum;
-import com.doubledimple.ociserver.config.task.VersionCheckTask;
 import com.doubledimple.ociserver.pojo.enums.MessageEnum;
 import com.doubledimple.ociserver.pojo.request.PasswordUpdateRequest;
 import com.doubledimple.ociserver.service.InstallAppService;
@@ -39,9 +38,6 @@ public class LoginUserService {
     private PasswordEncoder passwordEncoder;
 
     @Resource
-    VersionCheckTask versionCheckTask;
-
-    @Resource
     MessageFactory messageFactory;
 
     @Resource
@@ -59,7 +55,6 @@ public class LoginUserService {
             throw new RuntimeException("用户名或密码错误");
         }
 
-        versionCheckTask.checkVersion();
         return user;
     }
 

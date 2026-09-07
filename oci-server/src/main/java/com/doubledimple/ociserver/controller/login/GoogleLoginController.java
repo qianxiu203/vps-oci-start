@@ -2,7 +2,6 @@ package com.doubledimple.ociserver.controller.login;
 
 import com.doubledimple.dao.entity.LoginUser;
 import com.doubledimple.ocicommon.enums.LoginTypeEnum;
-import com.doubledimple.ociserver.config.task.VersionCheckTask;
 import com.doubledimple.ociserver.controller.BaseController;
 import com.doubledimple.ociserver.pojo.request.GoogleConfig;
 import com.doubledimple.ociserver.pojo.request.GoogleUser;
@@ -53,9 +52,6 @@ public class GoogleLoginController extends BaseController {
     private SystemConfigService systemConfigService;
 
     @Resource
-    VersionCheckTask versionCheckTask;
-
-    @Resource
     RestTemplate restTemplate;
 
     @Resource
@@ -87,7 +83,6 @@ public class GoogleLoginController extends BaseController {
                     URLEncoder.encode(config.getRedirectUri(), StandardCharsets.UTF_8.name()),
                     state
             );
-            versionCheckTask.checkVersion();
             return ResponseEntity.ok(url);
         } catch (Exception e) {
             log.error("获取Google登录URL失败", e);

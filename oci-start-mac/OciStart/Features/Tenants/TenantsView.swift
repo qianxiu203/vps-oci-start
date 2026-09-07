@@ -127,6 +127,8 @@ struct TenantsView: View {
                     filterBar
                     if let err = model.errorText, !err.isEmpty { errorBanner(err) }
                     listBody
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
                     PaginationBar(state: $model.pageState) {
                         Task { await model.reload() }
                     }
@@ -215,14 +217,18 @@ struct TenantsView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tableCardBackground)
         } else if model.rows.isEmpty && model.isLoading {
-            VStack {
+            VStack(spacing: 10) {
                 Spacer()
                 ProgressView()
-                Text("加载中…").font(.system(size: 12)).foregroundColor(AppTheme.sidebarText(dark)).padding(.top, 8)
+                Text("加载中…")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.sidebarText(dark))
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tableCardBackground)
         } else {
             GeometryReader { geo in
                 let m = colMetrics(namesHidden: model.namesHidden)
@@ -245,22 +251,44 @@ struct TenantsView: View {
                     task: m.task, region: wRegion, multi: m.multi, type: m.type,
                     create: m.create, time: m.time, status: wStatus, action: wAction, hPad: hPad
                 )
+                let needsHScroll = totalW > geo.size.width + 0.5
 
-                ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                    VStack(spacing: 0) {
-                        headerRow(cols: cols, width: totalW)
+                // 表头固定在顶部 + 仅纵向滚动。禁止双轴 ScrollView：内容矮于视口时
+                // macOS 会把表格竖直居中，搜索栏和分页之间出现大块空白。
+                let table = VStack(spacing: 0) {
+                    headerRow(cols: cols, width: totalW)
+                    ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.rows.enumerated()), id: \.element.id) { idx, row in
                                 tenantRow(index: idx, item: row, cols: cols, width: totalW)
                             }
                         }
                     }
-                    .frame(width: totalW, alignment: .topLeading)
                 }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .frame(width: totalW, height: geo.size.height, alignment: .topLeading)
+
+                Group {
+                    if needsHScroll {
+                        ScrollView(.horizontal, showsIndicators: true) { table }
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    } else {
+                        table
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tableCardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.border(dark).opacity(0.55), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(dark ? 0.22 : 0.06), radius: 8, x: 0, y: 2)
         }
+    }
+
+    private var tableCardBackground: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(AppTheme.sidebarBg(dark))
     }
 
     private func headerRow(cols: TenantColWidths, width: CGFloat) -> some View {

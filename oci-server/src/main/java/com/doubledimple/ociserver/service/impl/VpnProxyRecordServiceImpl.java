@@ -189,14 +189,8 @@ public class VpnProxyRecordServiceImpl implements VpnProxyRecordService {
         }
         VpnProxyRecord proxy = vpnProxyRecordRepository.findById(proxyId)
                 .orElseThrow(() -> new IllegalArgumentException("代理不存在: " + proxyId));
-        unbindTenantEverywhere(rootId);
-
-        VpnProxyTenantBind bind = new VpnProxyTenantBind();
-        bind.setProxyId(proxy.getId());
-        bind.setTenantId(rootId);
-        vpnProxyTenantBindRepository.save(bind);
-
-        // 同步旧列：若该代理 tenant_id 为空则写入首个
+        upsertBind(proxy.getId(), rootId);
+        syncLegacyTenantIdColumn(Collections.singleton(rootId), proxy.getId());
         if (proxy.getTenantId() == null) {
             proxy.setTenantId(rootId);
             proxy.setUpdateTime(LocalDateTime.now());
@@ -243,7 +237,8 @@ public class VpnProxyRecordServiceImpl implements VpnProxyRecordService {
     }
 
     /**
-     * 批量填充 tenantIds / tenantName；并把旧 tenant_id 列迁移到 bind 表（懒迁移）。
+     * 批量填充 tenantIds / tenantName。只读，不写 bind 表。
+     * 旧 tenant_id 列仅用于展示回退；写入只走 save/bind。
      */
     private void fillBindings(List<VpnProxyRecord> records) {
         if (records == null || records.isEmpty()) {
@@ -264,34 +259,6 @@ public class VpnProxyRecordServiceImpl implements VpnProxyRecordService {
                 continue;
             }
             proxyToTenants.computeIfAbsent(b.getProxyId(), k -> new ArrayList<>()).add(b.getTenantId());
-        }
-
-        // 懒迁移：旧列有 tenant_id 但 bind 表没有 → 写入 bind
-        for (VpnProxyRecord r : records) {
-            if (r == null || r.getId() == null) {
-                continue;
-            }
-            List<Long> fromBind = proxyToTenants.get(r.getId());
-            if ((fromBind == null || fromBind.isEmpty()) && r.getTenantId() != null) {
-                try {
-                    // 该租户若已绑到其它代理，以 bind 为准，不覆盖
-                    VpnProxyTenantBind existing = vpnProxyTenantBindRepository.findTopByTenantId(r.getTenantId());
-                    if (existing == null) {
-                        VpnProxyTenantBind nb = new VpnProxyTenantBind();
-                        nb.setProxyId(r.getId());
-                        nb.setTenantId(r.getTenantId());
-                        vpnProxyTenantBindRepository.save(nb);
-                        fromBind = new ArrayList<>();
-                        fromBind.add(r.getTenantId());
-                        proxyToTenants.put(r.getId(), fromBind);
-                    } else if (existing.getProxyId().equals(r.getId())) {
-                        fromBind = Collections.singletonList(r.getTenantId());
-                        proxyToTenants.put(r.getId(), new ArrayList<>(fromBind));
-                    }
-                } catch (Exception e) {
-                    log.debug("懒迁移代理绑定失败 proxyId={}: {}", r.getId(), e.getMessage());
-                }
-            }
         }
 
         // 收集租户名
@@ -382,28 +349,74 @@ public class VpnProxyRecordServiceImpl implements VpnProxyRecordService {
     }
 
     /**
-     * 替换某代理的全部绑定；并保证这些租户从其它代理解绑。
+     * 替换某代理的全部绑定。租户已有行则改 proxy_id，避免 delete+insert 撞 uk_vpn_proxy_tenant。
      */
     private void replaceBinds(Long proxyId, List<Long> tenantIds) {
         if (proxyId == null) {
             return;
         }
-        List<Long> ids = tenantIds == null ? Collections.emptyList() : tenantIds;
-        if (!ids.isEmpty()) {
-            vpnProxyTenantBindRepository.deleteByTenantIdInAndProxyIdNot(ids, proxyId);
-        }
-        vpnProxyTenantBindRepository.deleteByProxyId(proxyId);
-        for (Long tid : ids) {
-            if (tid == null) {
-                continue;
+        LinkedHashSet<Long> desired = new LinkedHashSet<>();
+        if (tenantIds != null) {
+            for (Long tid : tenantIds) {
+                if (tid != null) {
+                    desired.add(tid);
+                }
             }
+        }
+
+        List<VpnProxyTenantBind> current = vpnProxyTenantBindRepository.findByProxyId(proxyId);
+        if (current != null) {
+            for (VpnProxyTenantBind b : current) {
+                if (b == null) {
+                    continue;
+                }
+                if (b.getTenantId() == null || !desired.contains(b.getTenantId())) {
+                    vpnProxyTenantBindRepository.delete(b);
+                }
+            }
+        }
+
+        for (Long tid : desired) {
+            upsertBind(proxyId, tid);
+        }
+        if (!desired.isEmpty()) {
+            syncLegacyTenantIdColumn(desired, proxyId);
+        }
+        vpnProxyTenantBindRepository.flush();
+    }
+
+    /** 一租户一行：已存在则改绑到本代理，不存在再插入。 */
+    private void upsertBind(Long proxyId, Long tenantId) {
+        VpnProxyTenantBind existing = vpnProxyTenantBindRepository.findTopByTenantId(tenantId);
+        if (existing == null) {
             VpnProxyTenantBind b = new VpnProxyTenantBind();
             b.setProxyId(proxyId);
-            b.setTenantId(tid);
+            b.setTenantId(tenantId);
             vpnProxyTenantBindRepository.save(b);
+            return;
         }
-        // 清理仍挂在旧 tenant_id 列、但已不在本次绑定里的兼容数据
-        // （其它代理的 tenant_id 列由懒迁移 / 下次 save 纠正）
+        if (!proxyId.equals(existing.getProxyId())) {
+            existing.setProxyId(proxyId);
+            vpnProxyTenantBindRepository.save(existing);
+        }
+    }
+
+    /** 其它代理旧列若仍写着这些租户，清掉，避免列表回退显示成重复绑定。 */
+    private void syncLegacyTenantIdColumn(Set<Long> tenantIds, Long keepProxyId) {
+        if (tenantIds == null || tenantIds.isEmpty()) {
+            return;
+        }
+        List<VpnProxyRecord> all = vpnProxyRecordRepository.findAll();
+        for (VpnProxyRecord r : all) {
+            if (r == null || r.getId() == null || r.getId().equals(keepProxyId)) {
+                continue;
+            }
+            if (r.getTenantId() != null && tenantIds.contains(r.getTenantId())) {
+                r.setTenantId(null);
+                r.setUpdateTime(LocalDateTime.now());
+                vpnProxyRecordRepository.save(r);
+            }
+        }
     }
 
     private void unbindTenantEverywhere(Long tenantId) {

@@ -232,16 +232,17 @@ struct TenantDetailView: View {
                 let wName = nameNeed + flex * nameShare
                 let wDef = m.minDef + flex * (1 - nameShare)
 
-                ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                    VStack(spacing: 0) {
-                        headerRow(
-                            wName: wName, wDef: wDef,
-                            task: m.task, region: m.region, home: m.home,
-                            sync: m.sync, time: m.time, action: m.action,
-                            width: totalW
-                        )
-                        // 必须用 offset 做 identity：regionList 在异常/兜底数据下可能出现重复 id，
-                        // macOS 11 SwiftUI 会 fatalError「each layout item may only occur once」直接退出。
+                let needsHScroll = totalW > geo.size.width + 0.5
+                let table = VStack(spacing: 0) {
+                    headerRow(
+                        wName: wName, wDef: wDef,
+                        task: m.task, region: m.region, home: m.home,
+                        sync: m.sync, time: m.time, action: m.action,
+                        width: totalW
+                    )
+                    // 必须用 offset 做 identity：regionList 在异常/兜底数据下可能出现重复 id，
+                    // macOS 11 SwiftUI 会 fatalError「each layout item may only occur once」直接退出。
+                    ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.detailRows.enumerated()), id: \.offset) { idx, row in
                                 dataRow(
@@ -255,9 +256,17 @@ struct TenantDetailView: View {
                             }
                         }
                     }
-                    .frame(width: totalW, alignment: .topLeading)
                 }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .frame(width: totalW, height: geo.size.height, alignment: .topLeading)
+
+                Group {
+                    if needsHScroll {
+                        ScrollView(.horizontal, showsIndicators: true) { table }
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    } else {
+                        table
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(tableCardBackground)

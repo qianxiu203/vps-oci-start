@@ -73,8 +73,8 @@ public class VpnProxyRecordController extends BaseController{
             vpnProxyRecordService.saveOrUpdate(vpnProxyRecordRequest);
             return ApiResponse.success();
         } catch (Exception e) {
-            log.error("查询vpn代理配置列表失败", e);
-            return ApiResponse.error("查询vpn代理配置列表失败: " + e.getMessage());
+            log.error("保存vpn代理配置失败", e);
+            return ApiResponse.error("保存vpn代理配置失败: " + e.getMessage());
         }
     }
 
@@ -86,8 +86,8 @@ public class VpnProxyRecordController extends BaseController{
             vpnProxyRecordService.delete(vpnProxyRecordRequest);
             return ApiResponse.success();
         } catch (Exception e) {
-            log.error("查询vpn代理配置列表失败", e);
-            return ApiResponse.error("查询vpn代理配置列表失败: " + e.getMessage());
+            log.error("删除vpn代理配置失败", e);
+            return ApiResponse.error("删除vpn代理配置失败: " + e.getMessage());
         }
     }
 

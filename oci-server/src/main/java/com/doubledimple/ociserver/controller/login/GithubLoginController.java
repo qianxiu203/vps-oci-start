@@ -2,7 +2,6 @@ package com.doubledimple.ociserver.controller.login;
 
 import com.doubledimple.dao.entity.LoginUser;
 import com.doubledimple.ocicommon.enums.LoginTypeEnum;
-import com.doubledimple.ociserver.config.task.VersionCheckTask;
 import com.doubledimple.ociserver.controller.BaseController;
 import com.doubledimple.ociserver.pojo.request.GithubConfig;
 import com.doubledimple.ociserver.pojo.request.GithubUser;
@@ -44,9 +43,6 @@ public class GithubLoginController extends BaseController {
 
     @Resource
     private SystemConfigService systemConfigService;
-
-    @Resource
-    VersionCheckTask versionCheckTask;
 
     @Resource
     private LoginUserService loginUserService;
@@ -92,7 +88,6 @@ public class GithubLoginController extends BaseController {
                     URLEncoder.encode(config.getRedirectUri(), StandardCharsets.UTF_8.name()),
                     URLEncoder.encode(state, StandardCharsets.UTF_8.name())
             );
-            versionCheckTask.checkVersion();
             return ResponseEntity.ok(url);
         } catch (Exception e) {
             log.error("获取GitHub登录URL失败", e);
